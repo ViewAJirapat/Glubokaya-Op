@@ -1,6 +1,6 @@
 # AI Handover Report: Agent Swarm harness + local-AI fallback
 
-**Date:** 2026-10-21 · **Project root:** `E:\Playground_Projects\04_AgentSwarm` (Windows 11) · **Not a git repo; don't commit unless the user asks.**
+**Date:** 2026-10-21 · **Project root:** `E:\Playground_Projects\04_AgentSwarm` (Windows 11) · **Git:** private GitHub repo `ViewAJirapat/Glubokaya-Op`, branch `main`. Don't commit or push unless the user asks.
 
 You are taking over with no prior context. Read sections 1–3 before touching anything. Every "don't" in section 2 cost real time to discover.
 
