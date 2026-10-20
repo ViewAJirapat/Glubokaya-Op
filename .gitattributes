@@ -1,3 +1,6 @@
 # Keep LF in every checkout: solution.patch files must apply to the LF demo repo,
 # and the harness is cross-platform. (Windows Git defaults to core.autocrlf=true.)
 * text=auto eol=lf
+
+# Binary archives: never convert line endings or diff.
+*.zip binary

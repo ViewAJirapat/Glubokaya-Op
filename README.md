@@ -204,5 +204,8 @@ demo/shopkit/     template for the demo target repo
 tasks/demo/       4 tasks: 2 bug fixes, 1 feature, 1 multi-file feature
 tests/            harness tests (scripted agents: cheater, noop, cosmetic, crasher);
                   SWARM_DOCKER_TESTS=1 adds two end-to-end runs in real containers
-work/ .worktrees/ runs/   generated, git-ignored
+local-ai/         aider-local launcher (Aider + local Ollama model) and its model settings
+third_party/      Aider.zip: unmodified Aider v0.86.2 source snapshot (see third_party/README.md)
+HANDOVER.md       status, decisions and failed approaches, for whoever picks this up next
+work/ .worktrees/ runs/ models/   generated or downloaded, git-ignored
 ```
