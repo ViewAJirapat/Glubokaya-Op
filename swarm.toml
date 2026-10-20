@@ -1,0 +1,149 @@
+# swarm.toml: targets (repos the agents work on) and engines (agents that do the work).
+# Relative paths resolve against this file.
+
+[defaults]
+target = "demo"
+engine = "local-7b"
+max_iterations = 4
+agent_timeout = 900          # seconds per agent call (7B on a 1080 Ti: usually 30-120 s)
+verify_timeout = 300         # seconds per verification command
+feedback_chars = 6000        # failure output fed back per attempt; keep small for 16k-context models
+acceptance_feedback = "full" # full | summary | none: how much hidden-test output the agent sees
+baseline_check = true        # base must be green and the hidden tests must fail on it
+
+# ---------------------------------------------------------------------------
+# Targets
+# ---------------------------------------------------------------------------
+[targets.demo]
+repo = "work/demo_repo"      # created by `swarm demo-init` from the template
+template = "demo/shopkit"
+base = "main"
+tasks = "tasks/demo"
+rules_file = "AGENTS.md"     # read from the base commit and handed to the agent read-only
+pythonpath = ["src"]         # prepended (inside the worktree) for every gate
+import_check = "shopkit"     # must import from the worktree, not another checkout
+sandbox = "none"             # "docker": agent and gates run in containers (see [sandbox])
+
+# The single source of truth for "done". The prompt shows these to the agent;
+# AGENTS.md does not duplicate them. {python} is the harness venv interpreter.
+verify = [
+  ["{python}", "-m", "ruff", "check", "."],
+  ["{python}", "-m", "ruff", "format", "--check", "."],
+  ["{python}", "-m", "mypy", "src"],
+  ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"],
+]
+
+# Deterministic fixers applied after every agent edit (before the guard and gates),
+# like a pre-commit hook. Keeps the benchmark about logic, not import order.
+autofix = [
+  ["{python}", "-m", "ruff", "check", "--fix", "--exit-zero", "--quiet", "."],
+  ["{python}", "-m", "ruff", "format", "--quiet", "."],
+]
+
+# Edits here are reverted before verification. A pattern without "/" matches any path
+# component (".git*" covers .gitignore, .github/...); "**" spans directories.
+protected = [
+  "tests/**", "conftest.py", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini",
+  "pytest.ini", "mypy.ini", ".mypy.ini", "ruff.toml", ".ruff.toml", "sitecustomize.py",
+  "usercustomize.py", "AGENTS.md", "CLAUDE.md", ".claude", ".git*", ".aider*",
+]
+
+# Regexes checked against every added line. Any hit blocks a pass.
+forbidden_added = [
+  '#\s*type:\s*ignore',
+  '#\s*noqa',
+  '#\s*pragma:\s*no\s*cover',
+  'pytest\.(mark\.)?(skip|xfail|importorskip)',
+  'unittest\.skip',
+  'collect_ignore',
+]
+
+# ---------------------------------------------------------------------------
+# Docker sandbox, for targets with sandbox = "docker" (or `swarm --sandbox docker ...`).
+# Build the image once with `uv run swarm docker-build`. Values shown are the defaults.
+# ---------------------------------------------------------------------------
+[sandbox]
+image = "swarm-sandbox:latest"
+memory = "4g"                # per container; Docker Desktop's VM has 8 GB here
+pids_limit = 512
+# cpus = 4                   # unlimited by default
+network = "bridge"           # agent: Ollama via host.docker.internal, or a cloud API
+verify_network = "none"      # gates run agent-written code: no network
+readonly_checks = true       # gates see the worktree read-only: what passed is what's committed
+
+# ---------------------------------------------------------------------------
+# Engines
+# ---------------------------------------------------------------------------
+# Local: Ollama on the GTX 1080 Ti (11 GB). Context size is pinned in
+# config/aider.model.settings.yml so Ollama doesn't reload the model per request.
+[engines.local-7b]
+kind = "aider"
+model = "ollama_chat/qwen2.5-coder:7b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024"]
+
+# Tight on 11 GB (about 9 GB of weights + 8k context): expect some CPU offload.
+[engines.local-14b]
+kind = "aider"
+model = "ollama_chat/qwen2.5-coder:14b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024"]
+
+# DeepSeek-Coder-V2 Lite: 16B mixture-of-experts, ~2.4B active per token, so it
+# generates fast even if a few layers spill to the CPU.
+[engines.local-16b]
+kind = "aider"
+model = "ollama_chat/deepseek-coder-v2:16b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024"]
+
+# Architect mode ("brain + hand"): the model first plans the change in prose, then a
+# second pass (same model, so nothing is swapped on the GPU) turns the plan into edits.
+[engines.local-7b-arch]
+kind = "aider"
+model = "ollama_chat/qwen2.5-coder:7b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024", "--architect"]
+
+[engines.local-14b-arch]
+kind = "aider"
+model = "ollama_chat/qwen2.5-coder:14b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024", "--architect"]
+
+[engines.local-16b-arch]
+kind = "aider"
+model = "ollama_chat/deepseek-coder-v2:16b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024", "--architect"]
+
+# Cloud: Claude Code headless, restricted to file tools inside the worktree.
+[engines.claude-sonnet]
+kind = "claude"
+model = "sonnet"
+
+[engines.claude-opus]
+kind = "claude"
+model = "opus"
+
+# Aider against the Anthropic API directly (needs ANTHROPIC_API_KEY).
+[engines.aider-sonnet]
+kind = "aider"
+model = "anthropic/claude-sonnet-5-5"
+pass_env = ["ANTHROPIC_API_KEY"]
+
+# Reference solutions: proves tasks are solvable and the pass path works (no model).
+[engines.oracle]
+kind = "oracle"
+
+# Any other CLI agent. Placeholders: {prompt_file} {rules_file} {worktree} {model} {python}
+# [engines.my-agent]
+# kind = "command"
+# cmd = ["my-agent", "--prompt-file", "{prompt_file}"]
+# pass_env = ["MY_AGENT_API_KEY"]

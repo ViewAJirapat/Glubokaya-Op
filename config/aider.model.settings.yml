@@ -1,0 +1,27 @@
+# Ollama options per model.
+#
+# num_ctx: Ollama defaults to a small window and silently drops whatever doesn't fit;
+#   a fixed value also stops it reloading the model whenever the requested size changes.
+# num_predict: caps each reply. Without it a small model stuck in a repetition loop keeps
+#   generating past the context window until the request times out (seen: 10+ minutes).
+#   4096 tokens is ~80 s at ~49 tok/s and far more than a whole-file edit here needs.
+#
+# GTX 1080 Ti (11 GB) budget, Q4_K_M weights:
+#   qwen2.5-coder:7b   ~4.7 GB weights + ~1 GB KV cache at 16k  -> 5.6 GB, 100% GPU
+#   qwen2.5-coder:14b  ~9.0 GB weights + ~1.6 GB KV cache at 8k -> borderline, may offload
+- name: ollama_chat/qwen2.5-coder:7b
+  extra_params:
+    num_ctx: 16384
+    num_predict: 4096
+
+- name: ollama_chat/qwen2.5-coder:14b
+  extra_params:
+    num_ctx: 8192
+    num_predict: 4096
+
+# deepseek-coder-v2:16b (MoE, ~2.4B active): ~8.9 GB weights; a few layers may run on
+# the CPU, which costs less than for a dense model.
+- name: ollama_chat/deepseek-coder-v2:16b
+  extra_params:
+    num_ctx: 8192
+    num_predict: 4096

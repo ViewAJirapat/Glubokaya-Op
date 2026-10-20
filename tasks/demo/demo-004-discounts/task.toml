@@ -1,0 +1,23 @@
+title = "Add percentage discount codes to the cart"
+type = "feat"
+files = ["src/shopkit/pricing.py", "src/shopkit/cart.py"]
+prompt = """
+Add percentage discount codes. This touches two modules.
+
+In `src/shopkit/pricing.py`:
+- Add `DISCOUNT_CODES: dict[str, int] = {"SAVE10": 10, "SAVE25": 25, "HALF": 50}`
+  (code -> percent off).
+- Add `apply_discount(amount_cents: int, percent: int) -> int`, returning the amount after
+  taking `percent`% off. The discount itself is rounded half up to whole cents
+  (10% of 1005 is 100.5 -> 101 off -> returns 904). Raise `ValueError` if `percent` is
+  outside 0..100 or `amount_cents` is negative. Use integer arithmetic only, no floats.
+
+In `src/shopkit/cart.py`:
+- Add a `discount_code` attribute to `Cart`: the normalized (upper-case) code currently
+  applied, or `None`. A new cart has `None`.
+- Add `Cart.apply_code(code: str) -> None`. Codes are case-insensitive and surrounding
+  whitespace is ignored. An unknown code raises `ValueError` and leaves the previously
+  applied code unchanged. Applying a valid code replaces the previous one (no stacking).
+- `total_cents()` returns the subtotal after the active discount (applied once, to the
+  whole subtotal). `subtotal_cents()` stays undiscounted.
+"""

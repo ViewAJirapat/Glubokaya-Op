@@ -1,0 +1,39 @@
+diff --git a/src/shopkit/__init__.py b/src/shopkit/__init__.py
+index 0cfc3b8..150e066 100644
+--- a/src/shopkit/__init__.py
++++ b/src/shopkit/__init__.py
+@@ -1,7 +1,8 @@
+ """shopkit: small helpers for a toy online shop."""
+ 
+ from shopkit.cart import Cart, LineItem
++from shopkit.durations import parse_duration
+ from shopkit.pagination import Page, paginate
+ from shopkit.text import slugify
+ 
+-__all__ = ["Cart", "LineItem", "Page", "paginate", "slugify"]
++__all__ = ["Cart", "LineItem", "Page", "paginate", "parse_duration", "slugify"]
+diff --git a/src/shopkit/durations.py b/src/shopkit/durations.py
+new file mode 100644
+index 0000000..731c09b
+--- /dev/null
++++ b/src/shopkit/durations.py
+@@ -0,0 +1,19 @@
++"""Parse compact duration strings such as "1h30m"."""
++
++import re
++
++_UNIT_SECONDS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
++_DURATION = re.compile(r"(?:(\d+)d)? *(?:(\d+)h)? *(?:(\d+)m)? *(?:(\d+)s)?")
++
++
++def parse_duration(text: str) -> int:
++    """Convert e.g. "2d 3h" or "1h30m" into seconds. Raises ValueError on bad input."""
++    stripped = text.strip()
++    match = _DURATION.fullmatch(stripped)
++    if not stripped or match is None:
++        raise ValueError(f"invalid duration: {text!r}")
++    return sum(
++        int(value) * seconds
++        for value, seconds in zip(match.groups(), _UNIT_SECONDS.values(), strict=True)
++        if value is not None
++    )

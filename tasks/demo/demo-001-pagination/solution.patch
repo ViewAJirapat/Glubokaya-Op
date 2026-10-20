@@ -1,0 +1,17 @@
+diff --git a/src/shopkit/pagination.py b/src/shopkit/pagination.py
+index 180961c..2d415db 100644
+--- a/src/shopkit/pagination.py
++++ b/src/shopkit/pagination.py
+@@ -23,7 +23,11 @@ class Page[T]:
+ 
+ def paginate[T](items: Sequence[T], page: int, per_page: int) -> Page[T]:
+     """Return page number `page` (1-based) of `items`, with `per_page` items per page."""
++    if per_page < 1:
++        raise ValueError("per_page must be >= 1")
+     total = len(items)
+-    pages = total // per_page
++    pages = max(1, -(-total // per_page))
++    if not 1 <= page <= pages:
++        raise ValueError(f"page must be between 1 and {pages}")
+     start = (page - 1) * per_page
+     return Page(list(items[start : start + per_page]), page, per_page, total, pages)

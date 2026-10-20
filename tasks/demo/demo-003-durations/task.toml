@@ -1,0 +1,18 @@
+title = "Add parse_duration()"
+type = "feat"
+files = ["src/shopkit/__init__.py"]
+prompt = """
+Add `parse_duration(text: str) -> int` in a new module `src/shopkit/durations.py` and
+export it from the package, so that `from shopkit import parse_duration` works.
+
+It converts a compact duration string into a whole number of seconds:
+- The string is one or more `<digits><unit>` parts. Units: `d` (days), `h` (hours),
+  `m` (minutes), `s` (seconds). Units are lowercase only.
+- Units must appear in that order (d, h, m, s) and each at most once.
+- Parts may be separated by spaces. Leading and trailing whitespace is ignored.
+- Raise `ValueError` for anything else: empty or whitespace-only input, an unknown unit,
+  a number without a unit, a unit without a number, signs (`+`/`-`), decimals,
+  units out of order, or a repeated unit.
+
+Examples: "45s" -> 45, "1h30m" -> 5400, "2d 3h" -> 183600, "0s" -> 0, "1d2h3m4s" -> 93784.
+"""

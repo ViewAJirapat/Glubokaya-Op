@@ -1,0 +1,21 @@
+# Ollama options for interactive aider-local sessions (the benchmark harness uses
+# config/aider.model.settings.yml instead).
+#
+# num_ctx: Ollama silently drops anything past the window; a fixed value also stops it
+#   reloading the model whenever the requested size changes.
+# num_predict: caps each reply so a looping model can't generate for 10+ minutes.
+#   8192 (vs 4096 in the harness) leaves room for whole-file edits of bigger files.
+- name: ollama_chat/qwen2.5-coder:7b
+  extra_params:
+    num_ctx: 16384
+    num_predict: 8192
+
+- name: ollama_chat/qwen2.5-coder:14b
+  extra_params:
+    num_ctx: 8192
+    num_predict: 8192
+
+- name: ollama_chat/deepseek-coder-v2:16b
+  extra_params:
+    num_ctx: 8192
+    num_predict: 8192

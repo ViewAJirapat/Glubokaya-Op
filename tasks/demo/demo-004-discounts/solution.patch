@@ -1,0 +1,64 @@
+diff --git a/src/shopkit/cart.py b/src/shopkit/cart.py
+index 2f4e749..96950b5 100644
+--- a/src/shopkit/cart.py
++++ b/src/shopkit/cart.py
+@@ -2,7 +2,7 @@
+ 
+ from dataclasses import dataclass, field
+ 
+-from shopkit.pricing import line_total
++from shopkit.pricing import DISCOUNT_CODES, apply_discount, line_total
+ 
+ 
+ @dataclass
+@@ -15,6 +15,7 @@ class LineItem:
+ @dataclass
+ class Cart:
+     items: list[LineItem] = field(default_factory=list)
++    discount_code: str | None = None
+ 
+     def add(self, sku: str, unit_price_cents: int, quantity: int = 1) -> None:
+         for item in self.items:
+@@ -23,8 +24,17 @@ class Cart:
+                 return
+         self.items.append(LineItem(sku, unit_price_cents, quantity))
+ 
++    def apply_code(self, code: str) -> None:
++        normalized = code.strip().upper()
++        if normalized not in DISCOUNT_CODES:
++            raise ValueError(f"unknown discount code: {code!r}")
++        self.discount_code = normalized
++
+     def subtotal_cents(self) -> int:
+         return sum(line_total(i.unit_price_cents, i.quantity) for i in self.items)
+ 
+     def total_cents(self) -> int:
+-        return self.subtotal_cents()
++        subtotal = self.subtotal_cents()
++        if self.discount_code is None:
++            return subtotal
++        return apply_discount(subtotal, DISCOUNT_CODES[self.discount_code])
+diff --git a/src/shopkit/pricing.py b/src/shopkit/pricing.py
+index 8c280f6..3def647 100644
+--- a/src/shopkit/pricing.py
++++ b/src/shopkit/pricing.py
+@@ -1,7 +1,19 @@
+ """Money math. All amounts are integer cents."""
+ 
++DISCOUNT_CODES: dict[str, int] = {"SAVE10": 10, "SAVE25": 25, "HALF": 50}
++
+ 
+ def line_total(unit_price_cents: int, quantity: int) -> int:
+     if quantity < 0:
+         raise ValueError("quantity must be >= 0")
+     return unit_price_cents * quantity
++
++
++def apply_discount(amount_cents: int, percent: int) -> int:
++    """Take `percent`% off `amount_cents`, rounding the discount half up to whole cents."""
++    if not 0 <= percent <= 100:
++        raise ValueError("percent must be between 0 and 100")
++    if amount_cents < 0:
++        raise ValueError("amount_cents must be >= 0")
++    discount = (amount_cents * percent + 50) // 100
++    return amount_cents - discount

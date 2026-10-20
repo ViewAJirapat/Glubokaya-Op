@@ -1,0 +1,17 @@
+title = "Make slugify() handle real product names"
+type = "fix"
+files = ["src/shopkit/text.py"]
+prompt = """
+`slugify()` in `src/shopkit/text.py` produces broken slugs for real product names
+(accents, punctuation, repeated spaces). Rewrite it so that:
+
+1. Accented Latin letters become their plain ASCII letter ("Café" -> "cafe").
+   Any other non-ASCII character is dropped.
+2. The result is lowercase.
+3. Every run of characters that are not ASCII letters or digits becomes a single hyphen.
+4. There are no leading or trailing hyphens.
+5. If no letters or digits remain, the result is the empty string.
+
+Examples: "Crème Brûlée!" -> "creme-brulee", "C++ & Python 3.12" -> "c-python-3-12".
+Use only the standard library.
+"""
