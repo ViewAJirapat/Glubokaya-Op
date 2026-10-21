@@ -6,6 +6,17 @@ work is done: tamper checks, then the repo's gates, then hidden acceptance tests
 can't see. It commits only when everything passes.
 
 This is the corrected v0 of [`autonomous_coding_agent_swarm_blueprint.md`](autonomous_coding_agent_swarm_blueprint.md).
+Continuing on another PC? Start with [`HANDOVER.md`](HANDOVER.md).
+
+## Workflow
+
+Two ways in, one set of hands (Aider) and one brain (a local model in Ollama):
+
+![Project overview](docs/diagrams/overview.svg)
+
+What the harness does for each task. The harness, not the AI, decides when the work is done:
+
+![Harness loop for one task](docs/diagrams/task-loop.svg)
 
 ## What changed from the blueprint
 
@@ -25,23 +36,24 @@ This is the corrected v0 of [`autonomous_coding_agent_swarm_blueprint.md`](auton
 | "Zero merge collisions" across separate branches | `swarm integrate` merges the passing branches and re-runs every gate and every task's hidden tests. |
 | Bash + `python3` (broken on Windows) | Pure Python, `uv run swarm ...` |
 
-## Your machine (GTX 1080 Ti, 11 GB)
+## The original PC (GTX 1080 Ti, 11 GB)
+
+All measurements in this README come from this machine. On a different GPU, re-check the fit
+(`ollama ps`) and re-run the benchmark before trusting the defaults.
 
 - `qwen2.5-coder:7b` (Q4, ~4.7 GB) runs **100% on the GPU** with a 16k context, about 49 tokens/s.
-- `qwen2.5-coder:14b` (~9 GB) fits only with ~8k context and may spill to the CPU. Try it with `-e local-14b`.
+- `qwen2.5-coder:14b` (~9 GB) needs an 8k context and still spills 12% to the CPU, about 17 tokens/s.
 - Keep `-j 1` for local engines: parallel workers on one GPU just queue.
 - Context size is pinned in [`config/aider.model.settings.yml`](config/aider.model.settings.yml). Ollama silently truncates anything past it.
 - NVIDIA's 580 driver branch is the last to support Pascal cards. Stay on it.
 
-**Model storage (moved off C:).** The Ollama models live in `models/` in this folder
-(git-ignored, ~4.4 GB). Two things point there:
-- the user environment variable `OLLAMA_MODELS=E:\Playground_Projects\04_AgentSwarm\models`
-- a junction `C:\Users\viewj\.ollama\models` -> `E:\...\models`. The Ollama desktop app keeps
-  its own model-location setting; the junction makes it land on E: as well.
-
-If you move or delete this folder, delete the junction too (`rmdir C:\Users\viewj\.ollama\models`
-removes only the link) and update `OLLAMA_MODELS`. If `swarm` says Ollama is not reachable,
-start the server with `ollama serve`.
+**Model storage there (moved off a full C: drive).** The models live in the git-ignored `models/`
+folder of the clone, via two pointers: the user environment variable `OLLAMA_MODELS`, and a junction
+from `%USERPROFILE%\.ollama\models`. The junction is needed because the Ollama desktop app keeps its
+own model-location setting. If you move or delete that folder, also remove the junction
+(`rmdir %USERPROFILE%\.ollama\models` removes only the link) and update `OLLAMA_MODELS`. If `swarm`
+says Ollama is not reachable, start the server with `ollama serve`. A new PC needs none of this:
+see "Set up on another PC".
 
 ## Quickstart
 
@@ -281,6 +293,7 @@ tests/            harness tests (scripted agents: cheater, noop, cosmetic, crash
                   SWARM_DOCKER_TESTS=1 adds two end-to-end runs in real containers
 local-ai/         aider-local launcher (Aider + local Ollama model) and its model settings
 third_party/      Aider.zip: unmodified Aider v0.86.2 source snapshot (see third_party/README.md)
-HANDOVER.md       status, decisions and failed approaches, for whoever picks this up next
+HANDOVER.md       developer handover: status, decisions, failed approaches, new-PC steps
+docs/diagrams/    workflow diagrams (overview.svg, task-loop.svg)
 work/ .worktrees/ runs/ models/   generated or downloaded, git-ignored
 ```

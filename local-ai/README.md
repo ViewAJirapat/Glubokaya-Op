@@ -83,6 +83,6 @@ These settings live in the launcher on purpose, **not** in a global `~/.aider.co
 always reads that file, so it would also change the `swarm` benchmark harness's Aider runs. Plain
 `aider` stays unchanged.
 
-Models are stored in `E:\Playground_Projects\04_AgentSwarm\models` (see the main README).
-Add a brain with `ollama pull <tag>`, then add it to `$Brains` in `aider-local.ps1` and to
-`model.settings.yml`.
+Models are stored wherever Ollama keeps them on this PC (`OLLAMA_MODELS`, default
+`%USERPROFILE%\.ollama\models`). Add a brain with `ollama pull <tag>`, then add it to `$Brains` in
+`aider-local.ps1` and to `model.settings.yml`.

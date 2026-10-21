@@ -1,28 +1,34 @@
-# AI Handover Report: Agent Swarm harness + local-AI fallback
+# Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Date:** 2026-10-21 · **Project root:** `E:\Playground_Projects\04_AgentSwarm` (Windows 11) · **Git:** private GitHub repo `ViewAJirapat/Glubokaya-Op`, branch `main`. Don't commit or push unless the user asks.
+**Updated:** 2026-10-21 · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op`, branch `main` · **Built on:** Windows 11, GTX 1080 Ti (11 GB)
 
-You are taking over with no prior context. Read sections 1–3 before touching anything. Every "don't" in section 2 cost real time to discover.
+This is for whoever continues development **on another PC**, human or AI, with no prior context.
+- **Set up first:** section 6, step 1.
+- **Before changing anything:** read sections 2 and 3. Every "don't" in section 2b cost real time to discover.
+- **Workflow diagrams:** [`docs/diagrams/overview.svg`](docs/diagrams/overview.svg) (how the parts connect) and [`docs/diagrams/task-loop.svg`](docs/diagrams/task-loop.svg) (what the harness does per task).
 
 ---
 
 ## 1. Objective & Status
 
-The user is building toward **autonomous coding agents that run on their own hardware**, as a fallback for when their Claude usage limit runs out. Their original idea is in `autonomous_coding_agent_swarm_blueprint.md`: Aider plus a local LLM, one git worktree per task, and a loop that retries until tests pass.
+**Goal:** coding agents that run on the owner's own hardware, as a fallback for when Claude usage limits run out, plus a trustworthy way to measure how good a local model really is.
 
-That blueprint was reviewed and found to have structural flaws (listed in `README.md` → "What changed from the blueprint"), so a corrected **v0 harness** was built instead.
+The project has two parts that share Aider (the hands, which edit files) and a local Ollama model (the brain):
 
-| Workstream | Status |
+1. **`swarm` harness.** You give it coding tasks. It gives each task an isolated git worktree, lets an agent edit, and decides "done" itself: autofix, then a tamper guard, then the repo's gates, then **hidden acceptance tests** the agent can't see. It commits only on a pass and retries with the errors otherwise (up to 4 attempts). It's used to benchmark models (`swarm bench`).
+2. **`aider-local`.** An interactive command for everyday coding in any repo with a local model.
+
+It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.md`), which had structural flaws. The fixes are listed in `README.md` → "What changed from the blueprint".
+
+| Part | Status |
 |---|---|
-| **v0 harness** (`swarm` CLI, `uv run swarm ...`) | ✅ Done. 45 tests pass, 2 skipped (real-Docker end-to-end tests, opt-in). `ruff` and `mypy --strict` are clean. `swarm validate` passes 4/4 with the reference solutions. |
-| **Docker sandbox** for agents and gates | ✅ Done in a separate session. Opt-in: `sandbox = "docker"` per target, or `uv run swarm --sandbox docker ...`. Same pass rate as the host. |
-| **Ollama models moved off C:** | ✅ Done. Models live in `models/`. `OLLAMA_MODELS` (user env) and a junction `C:\Users\viewj\.ollama\models` → `E:\...\models` both point there. |
-| **C: disk cleanup** | ✅ The user removed WSL distro `Ubuntu-22.04` themselves. C: went from ~21 GB to 42 GB free. Robot project files were backed up first (see section 4). |
-| **"Aider = hands, local model = brain" fallback** | ✅ Done. All three brains are downloaded and benchmarked. `aider-local` now defaults to **qwen2.5-coder:14b in architect mode**, the benchmark winner; `--normal` skips the planning pass. Tested end to end (a small edit takes ~40 s). Usage guide: `local-ai/README.md`. |
-| **GitHub** | ✅ Everything is pushed to private repo `ViewAJirapat/Glubokaya-Op`, including `third_party/Aider.zip` (Aider v0.86.2 source snapshot). To continue on another PC, follow `README.md` → "Set up on another PC". |
-| Claude baseline benchmark | ❌ Never ran. The standalone `claude` CLI's login had expired (section 5). |
+| `swarm` harness | ✅ Works. 45 tests pass, 2 skipped (opt-in real-Docker tests). `ruff` and `mypy --strict` are clean. `swarm validate` passes 4/4. |
+| Docker sandbox (opt-in) | ✅ Works. Same pass rates as without it; adds ~4 s per container start. |
+| `aider-local` | ✅ Works. Default brain is qwen2.5-coder:14b in architect mode; a small edit takes ~40 s on the original PC. |
+| GitHub | ✅ Everything is pushed, including `third_party/Aider.zip` (Aider v0.86.2 source). |
+| Claude baseline benchmark | ❌ Never ran: the `claude` CLI wasn't signed in on the original PC. |
 
-**Benchmark results** (4 demo tasks, max 4 attempts each, one run per engine). Logs: `runs/compare-<engine>.log` and `runs/bench-*.json`.
+**Benchmark results** (original PC; 4 demo tasks; max 4 attempts each; one run per engine):
 
 | Engine | Pagination | Slugify | Durations | Discounts | Pass | Time |
 |---|---|---|---|---|---|---|
@@ -30,15 +36,13 @@ That blueprint was reviewed and found to have structural flaws (listed in `READM
 | **`local-14b-arch`** (qwen2.5-coder:14b, architect) | ✅ | ✅ | ❌ | ✅ | **3/4** | 11 min |
 | `local-14b` | ❌ | ✅ | ❌ | ✅ | 2/4 | 10 min |
 | `local-7b-arch` | ✅ | ✅ | ❌ | ❌ | 2/4 | 7 min |
-| `local-7b` (host, and the same in the Docker sandbox) | ❌ | ✅ | ❌ | ❌ | 1/4 | 12 min |
+| `local-7b` (same in Docker) | ❌ | ✅ | ❌ | ❌ | 1/4 | 12 min |
 | `local-16b` (deepseek-coder-v2:16b) | ❌ | ✅ | ❌ | ❌ | 1/4 | 16 min |
 | `local-16b-arch` | ❌ | ❌ | ❌ | ❌ | 0/4 | 22 min |
 
-What the results show:
-- **Architect mode helps both Qwen models** (+1 task each). It hurts DeepSeek (see 2b).
-- **Durations is unsolved by every local brain.** It's a parser with many edge cases.
-- The 7B's failures are model limits, not harness bugs. On pagination it resubmits the same off-by-one code; on discounts it never passes the type check. The transcripts in `runs/<run-id>/iter-N/aider.chat.md` show it.
-- **This is one run per engine on 4 tasks: a direction, not a verdict.**
+- **Architect mode** (plan in prose, then edit, same model) helps both Qwen models by one task each.
+- **No local brain solves durations**, a small parser with many edge cases.
+- **One run each on 4 tasks: a direction, not a verdict.** The raw logs stayed on the original PC (`runs/` isn't in git).
 
 ---
 
@@ -46,195 +50,223 @@ What the results show:
 
 ### 2a. Key decisions and why
 
-**Harness design** (code in `swarm/`):
-- **Python, not bash.** The machine is Windows, `python3` isn't on PATH, and bash quoting broke the blueprint's scripts. Run everything as `uv run swarm ...`.
-- **The harness is the only judge.** Agents never decide they're done. Each attempt runs:
+**Harness** (`swarm/`):
+- **Python run through uv, not bash.** Windows has no `python3` on PATH, and bash quoting broke the blueprint's scripts. Everything is `uv run swarm ...`.
+- **The harness is the only judge.** Each attempt runs:
   1. agent edits;
   2. autofix (`ruff check --fix`, `ruff format`);
-  3. the **guard** (`swarm/guard.py`) reverts edits to protected paths, blocks added lines matching forbidden regexes (`# type: ignore`, `# noqa`, skip/xfail, `collect_ignore`), and turns any commits the agent made back into uncommitted edits;
+  3. the guard (`swarm/guard.py`) reverts protected paths, blocks forbidden added lines (`# type: ignore`, `# noqa`, skip/xfail, `collect_ignore`), and turns agent commits back into uncommitted edits;
   4. **all** gates run, with no stopping at the first failure;
-  5. **hidden acceptance tests** run.
+  5. hidden tests run.
 
   Why: the blueprint's "exit code 0" could be met by deleting tests or by doing nothing.
-- **Hidden acceptance tests live outside the worktree** (`tasks/<target>/<id>/acceptance/`). They're copied to the run directory and run against the worktree via `PYTHONPATH`. The agent can't read or edit them.
-- **Baseline check before every run.** The base commit must pass the gates, and the hidden tests must **fail** on it. Otherwise the task is marked `invalid_task`. Why: a task whose tests already pass rewards a no-op.
-- **Retry prompts repeat the full task** plus every failure, clipped to a size budget (head 30% / tail 70%, because test runners put summaries at the end). Why: each agent call starts with no memory, and the blueprint's retries dropped the task entirely.
-- **"Stuck" warning.** If an attempt's diff is identical to the previous one, the next prompt says so explicitly. Why: the 7B repeated the same wrong code three times in a row.
-- **Fail fast on agent errors.** An agent error (auth, crash, timeout) with no file changes aborts the run as `error` instead of burning all 4 attempts.
-- **Commits are made by the harness**, with explicit guard-approved paths and author `swarm-agent`. Agents get an allowlisted environment with git credential helpers and remote protocols disabled (`swarm/util.py:agent_env`). Pushing happens only from the harness, after the gate, and only with `--push`.
-- **Rules come from the base commit.** The rules file (`AGENTS.md`) is read from base and passed read-only, so an agent's edit can't rewrite its own rules.
-- **One source of truth for "done":** the `verify` list in `swarm.toml`. The prompt shows these commands; `AGENTS.md` doesn't duplicate them.
-- **Worktrees live outside the target repo** (`.worktrees/<target>/<run-id>`). Passing worktrees are removed and their branch kept. Failing ones are **kept**, with `runs/<run-id>/final.patch`.
-- **Import check before the agent runs.** The package must import from the worktree. Why: an editable install of the main checkout would make the tests exercise the wrong code.
-- **Autofix exists because** the 7B's slugify fix was logically correct but failed ruff over import ordering. The benchmark should measure logic, not whitespace.
+- **Hidden tests live outside the worktree** (`tasks/<target>/<id>/acceptance/`), copied per run, with the worktree on `PYTHONPATH`. The agent can't read or edit them.
+- **Baseline check:** base must pass the gates and **fail** the hidden tests, else `invalid_task`. Why: otherwise a no-op passes.
+- **Retry prompt = full task + rules + all failures**, clipped to a size budget (head 30% / tail 70%, since summaries come last). Why: each agent call starts with no memory, and the blueprint's retries dropped the task.
+- **"Stuck" warning** when an attempt's diff equals the previous one. Why: small models resubmit identical wrong code.
+- **Fail fast:** an agent error (auth, crash, timeout) with no changes stops the run, instead of burning all 4 attempts.
+- **Commits come from the harness**, with explicit guard-approved paths and author `swarm-agent`.
+  - Agents get an allowlisted environment; git credential helpers and remote protocols are disabled (`swarm/util.py:agent_env`).
+  - Pushing happens only from the harness, after the gate, with `--push`.
+- **Rules (`AGENTS.md`) are read from the base commit**, so an agent can't rewrite its own rules.
+- **One source of truth for "done":** the `verify` list in `swarm.toml`. `AGENTS.md` doesn't duplicate it.
+- **Worktrees live outside the target repo** (`.worktrees/<target>/<run-id>`). Passing ones are removed and the branch kept; failing ones are kept, with `runs/<run-id>/final.patch`.
+- **Import check before the agent runs.** The package must import from the worktree; an editable install of another checkout would test the wrong code.
+- **Autofix exists because** a logically correct 7B fix failed ruff over import order. Benchmark logic, not whitespace.
 
-**Aider flags** (all in `swarm/engines.py:AiderEngine`; each was learned from a real failure on this machine):
+**Aider settings** (`swarm/engines.py:AiderEngine`; each one fixes a failure observed on the original PC):
 - `--chat-language English`
 - `--timeout 300`
 - `--no-auto-lint`
 - `--no-suggest-shell-commands`
 - `--no-auto-commits`
-- a per-run `--aiderignore` listing **all** protected paths
-- plus `num_ctx` / `num_predict` pinned in `config/aider.model.settings.yml`
+- a per-run `--aiderignore` with **all** protected paths
+- `num_ctx` / `num_predict` pinned per model in `config/aider.model.settings.yml`
 
 **Claude engine:** `claude -p --restricted --tools Read,Edit,Write,Glob,Grep --permission-mode acceptEdits`. No Bash; the harness runs the checks.
 
 **Docker sandbox** (`swarm/sandbox.py`, `docker/Dockerfile`):
 - Each agent call and each gate runs in a fresh container that sees only the worktree.
-- Gates run with no network and a **read-only** worktree.
+- Gates have no network and a read-only worktree.
 - Git inside the container uses a throwaway git dir with the object store mounted read-only.
-- Rejected `git worktree add --relative-paths`: it permanently sets a repo extension that older git refuses to open, and would need read-write refs.
+- `git worktree add --relative-paths` was rejected: it permanently sets a repo extension that older git can't open, and needs read-write refs.
 
-**Local-AI fallback:**
-- **A launcher, not a global Aider config.** Aider **always** loads `~/.aider.conf.yml` if present, which would silently change the harness's Aider runs. So all interactive settings live in `local-ai/aider-local.ps1` plus `local-ai/model.settings.yml`, and plain `aider` stays vanilla.
-- **"Brain + hand" means Aider's `--architect` mode with the SAME model in both roles.** Two different models can't both stay on an 11 GB GPU, so Ollama would reload them every turn, from a slow HDD.
-- **Interactive `num_predict` is 8192, vs 4096 in the harness.** Whole-file edits of real project files need more room than the small demo files.
+**`aider-local`** (`local-ai/`):
+- **A launcher, not a global `~/.aider.conf.yml`.** Aider always loads that file, so it would silently change the harness's Aider runs. Plain `aider` stays vanilla.
+- **"Brain + hand" = Aider `--architect` with the same model in both roles.** Two different models can't both stay in 11 GB of VRAM, so Ollama would reload them every turn.
+- **Interactive `num_predict` is 8192** (vs 4096 in the harness), leaving room for whole-file edits of real files.
+- **`local-ai/install.ps1` generates the PATH shim** for wherever the repo is cloned, so nothing depends on one PC's folder layout.
 
-**Line endings:** Aider writes CRLF (its `platform` default). That's fine because git's system config has `core.autocrlf=true`. Left unchanged.
+**Line endings:** `.gitattributes` forces LF in every checkout (`*.zip` is binary). Why: Windows Git defaults to `core.autocrlf=true`, which would turn the task `solution.patch` files into CRLF, and `git apply` would reject them.
 
 ### 2b. Failed approaches: do NOT repeat
 
-1. **Running the Claude engine from this environment.** `claude -p` fails with *"OAuth session expired and could not be refreshed"*. The desktop app authenticates its own process via host auth refresh, which a standalone `claude.exe` can't use. **Don't try to reuse or pass the desktop app's tokens.** The user must run `claude` interactively and log in.
-2. **Letting Aider see the files named in the prompt.** Aider auto-adds any repo file whose name appears in the prompt (e.g. `pyproject.toml` in the rules list) and `--yes-always` accepts. Fixed with `--aiderignore`.
-3. **Hiding only config files from Aider while leaving `tests/**` visible.** The 7B then wrote a new test file, degenerated into 500+ repeated lines, and Aider's lint-fix loop kept re-prompting. Fixed by hiding *all* protected paths plus `--no-auto-lint`.
-4. **Trusting Aider's default chat language.** It follows the Windows locale and told the model *"Reply in Thai_Thailand."* That hurts a 7B coder. Always pass `--chat-language English`.
-5. **No reply cap on Ollama.** A looping model kept generating past the context window until litellm's 600 s timeout (15+ min per attempt). Always set `num_predict`.
-6. **Using LiteLLM as a proxy** (from the blueprint). Unnecessary: Aider talks to Ollama directly (`ollama_chat/<tag>`, env `OLLAMA_API_BASE`). Use the `ollama_chat/` prefix, not `ollama/`.
-7. **Relying on the Ollama desktop app to start the server** after moving the models. Its log said *"models path not accessible"* and the server never came up. Its settings API needs a token; **don't hack its database or API**. The fix in place is the junction plus starting `ollama serve` directly. `aider-local` does this automatically, and the harness preflight prints a clear error.
-8. **Moving the page file or hot data to E:.** E: is a 5,900 rpm HDD. Rejected on purpose. Rarely used data (model files, Docker images, backups) is fine there.
-9. **Scanning folder sizes with Git Bash `du`.** It took 10+ minutes without finishing on the user profile. Use `robocopy <dir> NUL /L /S /XJ /BYTES /NFL /NDL /NJH` (list-only, skips junctions) per subfolder.
-10. **Passing shell scripts through PowerShell into WSL** (`wsl -d X -- sh -c '...'`). The quoting got mangled. Use `wsl -d X -u root -e <cmd> <args...>`.
-11. **Writing reference `solution.patch` files against CRLF checkouts.** `git apply` needs LF. The demo repo's `.gitattributes` forces `eol=lf`; keep it. The project repo's own `.gitattributes` also forces LF for the same reason.
-12. **DeepSeek-Coder-V2 16B as a brain.** It's fast (~48 tokens/s) but ignores instructions:
-    - it imported the third-party `unidecode` package despite "standard library only";
-    - it never collapsed repeated hyphens;
-    - in architect mode it lost Aider's edit format and created a file literally named `return slug`.
-
-    0/4 in architect mode, 1/4 normal. Don't make it the default.
-13. **Two different models as brain and hand** (`--hand`). They can't both stay on an 11 GB GPU, so Ollama would reload them from the HDD every turn. Architect mode uses the same model for both.
+1. **Running the Claude engine on an unsigned CLI.** It fails with *"OAuth session expired and could not be refreshed"*. A Claude Code desktop or IDE session can't lend its login to a separate `claude.exe`. **Don't try to reuse its tokens.** The owner runs `claude` once in a normal terminal and signs in.
+2. **Letting Aider see files named in the prompt.** It auto-adds them (e.g. `pyproject.toml` from the rules list) and `--yes-always` accepts. Fixed with `--aiderignore`.
+3. **Leaving `tests/**` visible to Aider.** The 7B wrote a new test file, degenerated into 500+ repeated lines, and Aider's lint loop kept re-prompting. Fixed by hiding all protected paths plus `--no-auto-lint`.
+4. **Aider's default chat language.** It follows the OS locale (*"Reply in Thai_Thailand."* on the original PC), which hurts small models. Always force English.
+5. **No reply cap.** A looping model generated until litellm's 600 s timeout (15+ min per attempt). Always set `num_predict`.
+6. **A LiteLLM proxy** (from the blueprint). Unnecessary: Aider talks to Ollama directly (`ollama_chat/<tag>`, env `OLLAMA_API_BASE`). Use `ollama_chat/`, not `ollama/`.
+7. **Relying on the Ollama desktop app to start the server.** On the original PC it stopped starting one after the model folder moved. Its settings API needs a token; don't hack it. `aider-local` starts `ollama serve` itself, and the harness preflight prints a clear error if Ollama is down.
+8. **Shrinking the 14B's context below 8k** to fit it fully in 11 GB of VRAM. Aider's prompts already reach 3–6k tokens.
+9. **DeepSeek-Coder-V2 16B as a brain.** It's fast but ignores instructions:
+   - it imported the third-party `unidecode` despite "standard library only";
+   - it never collapsed repeated hyphens;
+   - in architect mode it created a file literally named `return slug`.
+10. **Two different models as brain and hand** (`--hand`): constant model swapping on 11 GB.
+11. **Non-ASCII characters in `.ps1` scripts.** Windows PowerShell 5.1 reads BOM-less files in the system code page (Thai on the original PC). Keep scripts ASCII.
 
 ---
 
 ## 3. Constraints
 
-**Hardware:**
+**Platform and toolchain:**
+- **Windows-first.**
+  - The harness (`swarm/`) is cross-platform Python (POSIX paths are handled).
+  - **`aider-local` is PowerShell, so Windows only.** On Linux or macOS, run Aider directly with the same settings (section 5, issue 5).
+- **PowerShell 5.1:** no `&&`, no ternary operator, ASCII-only scripts.
+- **Pinned and tested versions:**
+  - Python ≥ 3.12 via uv (`uv.lock`)
+  - Aider **0.86.2** on Python 3.12, as a uv tool
+  - Ollama 0.40.6
+  - Docker Desktop 29.x (optional)
 
-| Component | Detail |
+**GPU: the defaults assume ~11 GB of VRAM.** This is a rough guide for retuning on another card; verify with `ollama ps`, aiming for ~100% GPU:
+
+| VRAM | Suggested default brain | Context (`num_ctx`) |
+|---|---|---|
+| < 8 GB | `7b` (CPU offload likely) | 8192 |
+| 8–10 GB | `7b` | 16384 |
+| 11–12 GB | `14b` (current default) | 8192 |
+| 16 GB+ | `14b`, fully on the GPU | 16384 |
+
+The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context sizes live in **both** `local-ai/model.settings.yml` and `config/aider.model.settings.yml`.
+
+**Not in git: recreate on each PC:**
+
+| Item | How to recreate |
 |---|---|
-| GPU | GTX 1080 Ti, 11 GB VRAM, Pascal sm_61, driver 571.96. NVIDIA's 580 branch is the last for Pascal. |
-| RAM | 16 GB. Rules out MoE models that need large CPU offload, e.g. 30B-A3B. |
-| CPU | i3-12100F, 4 cores |
-| C: | 256 GB NVMe SSD, **~42 GB free and fluctuating** (14.4 GB page file). **Keep large files off C:.** |
-| E: | 1 TB **5,900 rpm HDD**, ~240 GB free. Slow; first model load from it takes ~30 s. |
+| Ollama models (~23 GB for all three) | `ollama pull <tag>`, or copy the model folder from the old PC |
+| `.venv` | `uv sync` |
+| `aider-local` command | `powershell -ExecutionPolicy Bypass -File local-ai\install.ps1` |
+| Aider itself | `uv tool install --python 3.12 aider-chat==0.86.2` |
+| `work/demo_repo` | `uv run swarm demo-init` |
+| `runs/`, `.worktrees/` | generated by runs; old logs stay on the old PC |
+| Docker image `swarm-sandbox:latest` | `uv run swarm docker-build` (~1.3 GB, only for the sandbox) |
+| Claude CLI login | run `claude` once and sign in (only for Claude engines) |
+| Model location (optional) | `setx OLLAMA_MODELS <folder>` before pulling, if C: is small |
 
-**Measured model fit** (`ollama ps` after loading; first load is from the E: HDD):
-
-| Model | Context | Memory | GPU share | Generation | First load |
-|---|---|---|---|---|---|
-| `qwen2.5-coder:7b` | 16k | 5.6 GB | 100% | ~49 tokens/s | ~27 s |
-| `qwen2.5-coder:14b` | 8k | 10 GB | 88% (12% on CPU) | ~17 tokens/s | ~114 s |
-| `deepseek-coder-v2:16b` | 8k | 11 GB | 82% (18% on CPU) | ~48 tokens/s (MoE) | ~84 s |
-
-Don't shrink the 14B's context below 8k to fit it fully on the GPU: Aider's prompts already reach 3–6k tokens.
-
-**Software:**
-- Windows PowerShell **5.1**: no `&&`, no ternary operator. Scripts must be **ASCII**, because the system code page is Thai and files without a BOM are misread.
-- Git Bash is available. The Thai locale shows Buddhist-era years in some tool output (2569 = 2026).
-- Python 3.14 is the default; uv 0.11.
-- Aider **0.86.2** is a uv tool on Python 3.12 (`uv tool upgrade aider-chat`).
-- Ollama **0.40.6** at `%LOCALAPPDATA%\Programs\Ollama`.
-- Docker Desktop 29.8.2, data on `E:\Docker\wsl`. WSL 2.6.3; the remaining distro is `Ubuntu` (default).
-
-**User working rules:**
-- Ask before downloading anything; state the size.
-- Never delete user data yourself. Give the command and let the user run it.
+**Owner's working rules:**
+- Ask before downloading anything, and give the size.
+- Never delete the owner's data; give the command and let them run it.
 - Ask before changing persistent system settings.
-- Explain decisions with evidence (the benchmark exists for this).
 - Don't commit or push unless asked.
+- Back decisions with evidence (the benchmark exists for this).
+- The owner uses more than one PC: **`git pull` before starting, `git push` when done.**
 
-**Never edit** `tests/`, task `acceptance/` folders or `solution.patch` to make a benchmark pass. The point is a trustworthy comparison.
+**Never edit** `tests/`, task `acceptance/` folders or `solution.patch` to make a benchmark pass. That would destroy the point of the comparison.
 
 ---
 
 ## 4. Key Artifacts
 
-**Docs and config:**
-- `README.md`: harness docs, blueprint fixes, machine notes, results table, commands, Docker sandbox section, known limits. **Start here.**
-- `autonomous_coding_agent_swarm_blueprint.md`: the user's original blueprint. Leave it as is; it's the user's file.
-- `swarm.toml`: targets (gates, autofix, protected paths, forbidden regexes, sandbox) and engines. Comparison engines exist: `local-7b`, `local-7b-arch`, `local-14b`, `local-14b-arch`, `local-16b`, `local-16b-arch`, `claude-sonnet`, `claude-opus`, `aider-sonnet`, `oracle`.
-- `config/aider.model.settings.yml`: harness Ollama options per model (`num_ctx`, `num_predict` 4096).
+**Docs:**
+- `README.md`: full documentation, including workflow diagrams, results, commands, the Docker sandbox, known limits and **"Set up on another PC"**.
+- `local-ai/README.md`: `aider-local` guide (commands, brains, tips for small models).
+- `third_party/README.md`: provenance of `Aider.zip` (commit, SHA-256, license).
+- `docs/diagrams/overview.svg`, `docs/diagrams/task-loop.svg`: workflow diagrams.
+- `autonomous_coding_agent_swarm_blueprint.md`: the owner's original blueprint. Leave it as is.
+
+**Config:**
+- `swarm.toml`: targets (gates, autofix, protected paths, forbidden regexes, sandbox) and engines:
+  - `local-7b`, `local-14b`, `local-16b`, each with an `-arch` variant
+  - `claude-sonnet`, `claude-opus`, `aider-sonnet`
+  - `oracle`
+- `config/aider.model.settings.yml`: harness model options (`num_ctx`, `num_predict` 4096).
+- `.gitattributes`: LF everywhere, zips binary.
 
 **Harness code** (`swarm/`):
 - `cli.py`: commands.
-- `runner.py`: the loop for one task.
+- `runner.py`: the per-task loop.
 - `guard.py`: tamper checks.
 - `verify.py`: gates, autofix, hidden tests, import check.
-- `engines.py`: Aider, Claude, command, oracle adapters.
+- `engines.py`: Aider, Claude, command and oracle adapters.
 - `dispatch.py`: parallel runs, bench, integrate, clean, demo-init.
 - `sandbox.py`: Docker command construction.
-- `git.py`, `config.py`, `task.py`, `util.py`: helpers (process-tree timeouts, environment allowlist).
+- `git.py`, `config.py`, `task.py`, `util.py`: helpers.
 
 **Demo and tests:**
-- `demo/shopkit/`: template for the demo target repo; `work/demo_repo` is created from it by `uv run swarm demo-init`.
+- `demo/shopkit/`: template for the demo target repo.
 - `tasks/demo/demo-00{1..4}-*/`: `task.toml`, `acceptance/` (hidden tests), `solution.patch`.
-- `tests/`: harness tests. `tests/agents/` holds scripted fake agents: cheater, noop, cosmetic, crasher, messy.
-- `docker/Dockerfile`: sandbox image (build: `uv run swarm docker-build`).
+- `tests/`: harness tests. `tests/agents/` holds scripted fake agents (cheater, noop, cosmetic, crasher, messy).
+- `docker/Dockerfile`: sandbox image.
 
-**Generated state:**
-- `runs/`: per-run logs (`prompt.md`, `agent.log`, `autofix.log`, `gates.log`, `diff.patch`, `feedback.md`, `aider.chat.md`, `summary.json`) and `bench-*.json`.
-- `.worktrees/demo/`: 6 leftover failed-run worktrees. Safe to remove with `uv run swarm clean --branches`.
+**Local AI:**
+- `local-ai/aider-local.ps1`: the launcher (`$DefaultBrain = '14b'`, `$DefaultArchitect = $true`).
+- `local-ai/model.settings.yml`: interactive model options.
+- `local-ai/install.ps1`: creates the `aider-local` shim.
 
-**Local-AI fallback:**
-- `local-ai/aider-local.ps1`: the launcher. `$DefaultBrain` (`14b`) and `$DefaultArchitect` (`$true`) sit near the top.
-- `local-ai/model.settings.yml`: interactive model options (`num_predict` 8192).
-- `local-ai/README.md`: user guide (commands, brains table, tips for small models).
-- `local-ai/install.ps1`: (re)creates the `aider-local` shim in `%USERPROFILE%\.local\bin` for the current clone location. New-PC steps are in `README.md` → "Set up on another PC".
-- `third_party/Aider.zip` + `third_party/README.md`: unmodified Aider v0.86.2 source, with its commit, SHA-256 and license.
-- `runs/compare-<engine>.log`: console output of the brain-comparison runs.
-- `C:\Users\viewj\.local\bin\aider-local.cmd`: the shim that puts `aider-local` on PATH.
+**Vendored:** `third_party/Aider.zip`, the Aider v0.86.2 source. Reinstalling from PyPI is easier.
 
-**Model store:**
-- `models/`: Ollama models (git-ignored).
-- The junction `C:\Users\viewj\.ollama\models` and the user env var `OLLAMA_MODELS` both point there.
-
-**Backup:**
-- `E:\Playground_Projects\_backup_ubuntu-22.04\`: the user's "almondmatcha" robot files (`.urdf`, `.wbt`, launch `.py`, `fastdds.xml`) and `.bash_history`, saved from the removed WSL distro.
-
-**Health check** (run from the project root):
+**Health check** (from the repo root; expected results on a correctly set-up PC):
 - `uv run pytest -q` → 45 passed, 2 skipped
-- `uv run ruff check .`
-- `uv run mypy`
+- `uv run ruff check .` and `uv run mypy` → clean
 - `uv run swarm validate` → 4/4
 
 ---
 
 ## 5. Open Issues
 
-1. **Machine-local state isn't in git.** All work is committed and pushed. These have to be recreated per PC (`README.md` → "Set up on another PC"): the models, `.venv`, the `aider-local` shim (`local-ai/install.ps1`), `work/demo_repo`, and `runs/` logs.
-2. **The brain choice rests on thin evidence:** one run per engine on 4 tasks. A repeat run (`uv run swarm bench -e local-14b-arch -r 3`, about 35 min) would show whether 3/4 is stable. Tasks from the user's real projects would be more convincing still (issue 6).
-3. **No Claude ceiling.** Until the user logs into the `claude` CLI, there's no strong-model baseline. That makes it harder to tell "the model can't do it" from "the task or harness is unfair". (The oracle run proves the tasks are solvable.)
-4. **Ollama server after reboot.** The desktop app doesn't start a working server. `aider-local` starts `ollama serve` itself; the harness only errors with a hint. A persistent autostart (Startup shortcut or scheduled task) would fix it, but **needs the user's OK** because it's persistent config.
-5. **Docker sandbox limits:** ~4 s container startup per command (over half the sandboxed bench time); the agent container has network access; symlinks the agent creates aren't flagged by the guard. Two follow-up proposals exist: batch the gates into one container, and have the guard block symlinks.
-6. **Too few tasks.** 4 demo tasks are a smoke test. Real conclusions about a model need tasks from the user's own projects (format in `README.md` → "Adding your own repo").
-7. **Remaining C: cleanup candidates** (user's choice; the user runs any deletion):
-   - Cinebench 2024 Redshift caches under `%APPDATA%\Maxon\Cinebench2024_*\Redshift`: 8.7 GB
-   - `C:\ProgramData\Ubisoft\Ubisoft Game Launcher\patch`: 7.3 GB
-   - hibernation file: 6.3 GB (`powercfg /h /type reduced`, admin)
-   - pip cache: 3.2 GB (`pip cache purge`)
+1. **New hardware means new numbers.** All speeds, fits and pass rates come from the original 1080 Ti PC. Re-check the fit and re-run at least `local-14b-arch` on a new PC before trusting the default.
+2. **Thin evidence for the brain choice:** one run per engine, 4 tasks. `uv run swarm bench -e local-14b-arch -r 3` (~35 min on the original PC) would show whether 3/4 is stable. Tasks from the owner's real projects would be better still (`README.md` → "Adding your own repo").
+3. **No Claude ceiling yet.** Once the `claude` CLI is signed in, `uv run swarm bench -e claude-sonnet` shows what a strong model scores on the same tasks.
+4. **Docker sandbox limits:** ~4 s startup per container (over half the sandboxed bench time); the agent container has network access; symlinks made by the agent aren't flagged by the guard. Possible fixes: batch the gates into one container; make the guard reject symlinks.
+5. **`aider-local` is Windows-only.** The equivalent on Linux or macOS, from the repo root:
+
+   ```
+   OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/qwen2.5-coder:14b --model-settings-file local-ai/model.settings.yml --architect --chat-language English --no-analytics
+   ```
+6. **The Ollama desktop app may not start its server** (it didn't on the original PC). `aider-local` handles it. An autostart at login would need the owner's OK.
 
 ---
 
-## 6. Immediate Next Steps
+## 6. Immediate Next Steps (on the new PC)
 
-The brain comparison is finished; nothing is mid-flight.
+1. **Set up.** Full detail is in `README.md` → "Set up on another PC".
+   1. Install the tools: `winget install Git.Git`, `winget install astral-sh.uv`, `winget install Ollama.Ollama`.
+   2. Clone with `git clone https://github.com/ViewAJirapat/Glubokaya-Op.git`, then `cd Glubokaya-Op`. The repo is private, so GitHub sign-in opens.
+   3. Run `uv sync`, then `uv run swarm demo-init`, then `uv run swarm validate`. Expect 4/4.
+   4. Install Aider and the command:
+      - `uv tool install --python 3.12 aider-chat==0.86.2`
+      - `uv tool update-shell`
+      - `powershell -ExecutionPolicy Bypass -File local-ai\install.ps1`
+      - then open a new terminal.
+   5. Get the models (optional first: `setx OLLAMA_MODELS <bigger-drive-folder>`):
+      - `ollama pull qwen2.5-coder:14b` (9 GB)
+      - `ollama pull qwen2.5-coder:7b` (4.7 GB)
+   6. Run the health check in section 4.
+2. **Tune for this PC's GPU.**
+   1. `aider-local --list`.
+   2. In a scratch repo, run one request (e.g. `aider-local --message "add a docstring to <function>" <file>`).
+   3. Run `ollama ps` and read the GPU share.
+   4. If it's well below ~90% GPU, switch the default brain or lower `num_ctx` (section 3 table).
+   5. Then `uv run swarm bench -e local-14b-arch` to confirm the harness works end to end here (~11 min on the original PC).
+3. **Day-to-day routine:**
+   1. `git pull`.
+   2. Work.
+   3. Health check.
+   4. Commit, then `git push`. Benchmark runs are GPU-bound: use `-j 1`.
+4. **Optional, needs the owner:**
+   - Sign in to `claude` and run the Claude ceiling bench.
+   - Repeat runs for the brain choice.
+   - Add real-project tasks.
+   - `uv run swarm docker-build` to use the sandbox.
+5. **Don't redo:**
+   - The Aider tuning in 2a/2b.
+   - Re-evaluating DeepSeek-Coder-V2 16B.
 
-1. **On a new PC**, follow `README.md` → "Set up on another PC", then run the health checks in section 4. Before committing anything: `git pull`. The user works from more than one PC.
-2. **Confirm the brain choice with repeat runs** (optional, ~35 min of GPU time): `uv run swarm bench -e local-14b-arch -r 3`. If it holds at ≥2/4, keep the default. Then add 2–3 tasks from the user's own code (see `README.md` → "Adding your own repo") and re-run the top two engines.
-3. **Needs the user:**
-   - They log into the `claude` CLI; then run `uv run swarm bench -e claude-sonnet` to get the ceiling.
-   - Decide whether Ollama should autostart at login (persistent config: ask first).
-4. **Don't redo:** downloading or benchmarking the 7B/14B/16B (done, results above) or the Aider tuning in section 2. To try a new brain:
-   1. `ollama pull <tag>` (ask first; give the size).
-   2. Add it to `config/aider.model.settings.yml`, `local-ai/model.settings.yml`, the `$Brains` table in `local-ai/aider-local.ps1`, and an engine in `swarm.toml`.
-   3. Check the GPU fit with `ollama ps`.
+   To try a new brain:
+   1. Ask before pulling, and give the size.
+   2. Add it to both model-settings files, `$Brains` in `aider-local.ps1`, and an engine in `swarm.toml`.
+   3. Check `ollama ps`.
    4. Benchmark it against `local-14b-arch`.
