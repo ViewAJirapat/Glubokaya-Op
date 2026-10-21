@@ -19,7 +19,7 @@ That blueprint was reviewed and found to have structural flaws (listed in `READM
 | **Ollama models moved off C:** | ✅ Done. Models live in `models/`. `OLLAMA_MODELS` (user env) and a junction `C:\Users\viewj\.ollama\models` → `E:\...\models` both point there. |
 | **C: disk cleanup** | ✅ The user removed WSL distro `Ubuntu-22.04` themselves. C: went from ~21 GB to 42 GB free. Robot project files were backed up first (see section 4). |
 | **"Aider = hands, local model = brain" fallback** | ✅ Done. All three brains are downloaded and benchmarked. `aider-local` now defaults to **qwen2.5-coder:14b in architect mode**, the benchmark winner; `--normal` skips the planning pass. Tested end to end (a small edit takes ~40 s). Usage guide: `local-ai/README.md`. |
-| **GitHub** | ✅ Pushed to private repo `ViewAJirapat/Glubokaya-Op`, including `third_party/Aider.zip` (Aider v0.86.2 source snapshot). The brain-comparison doc and launcher updates are **not yet committed** (section 5). |
+| **GitHub** | ✅ Everything is pushed to private repo `ViewAJirapat/Glubokaya-Op`, including `third_party/Aider.zip` (Aider v0.86.2 source snapshot). To continue on another PC, follow `README.md` → "Set up on another PC". |
 | Claude baseline benchmark | ❌ Never ran. The standalone `claude` CLI's login had expired (section 5). |
 
 **Benchmark results** (4 demo tasks, max 4 attempts each, one run per engine). Logs: `runs/compare-<engine>.log` and `runs/bench-*.json`.
@@ -210,13 +210,7 @@ Don't shrink the 14B's context below 8k to fit it fully on the GPU: Aider's prom
 
 ## 5. Open Issues
 
-1. **Uncommitted changes.** Not yet committed or pushed:
-   - `local-ai/aider-local.ps1` (14B + architect default, `--normal`)
-   - `local-ai/README.md` and `local-ai/install.ps1` (new)
-   - `README.md` (results table, engines, "Set up on another PC")
-   - this file
-
-   The comparison engines in `swarm.toml` and the DeepSeek settings were already in the first commit. Commit and push only when the user asks.
+1. **Machine-local state isn't in git.** All work is committed and pushed. These have to be recreated per PC (`README.md` → "Set up on another PC"): the models, `.venv`, the `aider-local` shim (`local-ai/install.ps1`), `work/demo_repo`, and `runs/` logs.
 2. **The brain choice rests on thin evidence:** one run per engine on 4 tasks. A repeat run (`uv run swarm bench -e local-14b-arch -r 3`, about 35 min) would show whether 3/4 is stable. Tasks from the user's real projects would be more convincing still (issue 6).
 3. **No Claude ceiling.** Until the user logs into the `claude` CLI, there's no strong-model baseline. That makes it harder to tell "the model can't do it" from "the task or harness is unfair". (The oracle run proves the tasks are solvable.)
 4. **Ollama server after reboot.** The desktop app doesn't start a working server. `aider-local` starts `ollama serve` itself; the harness only errors with a hint. A persistent autostart (Startup shortcut or scheduled task) would fix it, but **needs the user's OK** because it's persistent config.
@@ -234,7 +228,7 @@ Don't shrink the 14B's context below 8k to fit it fully on the GPU: Aider's prom
 
 The brain comparison is finished; nothing is mid-flight.
 
-1. **If the user asks: commit and push** the changes listed in section 5, issue 1. Run the health checks in section 4 first.
+1. **On a new PC**, follow `README.md` → "Set up on another PC", then run the health checks in section 4. Before committing anything: `git pull`. The user works from more than one PC.
 2. **Confirm the brain choice with repeat runs** (optional, ~35 min of GPU time): `uv run swarm bench -e local-14b-arch -r 3`. If it holds at ≥2/4, keep the default. Then add 2–3 tasks from the user's own code (see `README.md` → "Adding your own repo") and re-run the top two engines.
 3. **Needs the user:**
    - They log into the `claude` CLI; then run `uv run swarm bench -e claude-sonnet` to get the ceiling.
