@@ -1,14 +1,17 @@
 # aider-local: Aider (the hands) driven by a local Ollama model (the brain).
 # A fallback for when Claude usage runs out. Run it inside any git repo.
 #
-#   aider-local                          default brain, interactive chat
-#   aider-local --brain 14b src\app.py   pick a brain, start with a file in the chat
-#   aider-local --architect              plan first, then edit (two passes, same model)
+#   aider-local                          default brain in architect mode, interactive chat
+#   aider-local --brain 7b src\app.py    pick a brain, start with a file in the chat
+#   aider-local --normal                 skip the planning pass (faster, less careful)
 #   aider-local --list                   show the brains and whether they are downloaded
 #
-# Own options: --brain <7b|14b|16b|ollama-tag>, --hand <...>, --list.
-# Everything else goes to Aider unchanged (e.g. --architect, --message "...", file names).
+# Own options: --brain <7b|14b|16b|ollama-tag>, --hand <...>, --normal, --list.
+# Everything else goes to Aider unchanged (e.g. --message "...", file names).
 # Default brain: $env:AIDER_LOCAL_BRAIN if set, else $DefaultBrain below.
+#
+# Defaults come from the swarm benchmark (4 demo tasks, 2026-10-21; see README.md):
+#   14b + architect 3/4 | 14b 2/4 | 7b + architect 2/4 | 7b 1/4 | 16b 1/4 | 16b + architect 0/4
 
 $ErrorActionPreference = 'Stop'
 
@@ -17,7 +20,8 @@ $Brains = [ordered]@{
     '14b' = 'qwen2.5-coder:14b'      # 9.0 GB, tight on 11 GB
     '16b' = 'deepseek-coder-v2:16b'  # 8.9 GB mixture-of-experts, fast for its size
 }
-$DefaultBrain = '7b'
+$DefaultBrain = '14b'
+$DefaultArchitect = $true   # plan, then edit: +1 task for both Qwen models in the benchmark
 $OllamaBase = 'http://127.0.0.1:11434'
 $Settings = Join-Path $PSScriptRoot 'model.settings.yml'
 
@@ -59,12 +63,15 @@ function Start-Ollama {
 $brainName = if ($env:AIDER_LOCAL_BRAIN) { $env:AIDER_LOCAL_BRAIN } else { $DefaultBrain }
 $handName = $null
 $list = $false
+$architect = $DefaultArchitect
 $passThrough = New-Object System.Collections.Generic.List[string]
 for ($i = 0; $i -lt $args.Count; $i++) {
     $a = [string]$args[$i]
     if ($a -eq '--brain' -and $i + 1 -lt $args.Count) { $brainName = [string]$args[++$i] }
     elseif ($a -eq '--hand' -and $i + 1 -lt $args.Count) { $handName = [string]$args[++$i] }
     elseif ($a -eq '--list') { $list = $true }
+    elseif ($a -eq '--normal') { $architect = $false }
+    elseif ($a -eq '--architect') { $architect = $true }
     else { $passThrough.Add($a) }
 }
 
@@ -97,18 +104,19 @@ $aiderArgs = @(
     '--no-analytics',
     '--no-check-update'
 )
-$mode = 'normal'
+$mode = 'normal (edits directly)'
 if ($handName) {
     $hand = Resolve-Tag $handName
     $aiderArgs += @('--editor-model', "ollama_chat/$hand")
-    if ($passThrough -notcontains '--architect') { $aiderArgs += '--architect' }
+    $architect = $true
     $mode = "architect, hand = $hand"
     if ($hand -ne $brain) {
         Write-Host 'Note: two different models cannot both stay on an 11 GB GPU; Ollama will swap them every turn (slow).' -ForegroundColor Yellow
     }
-} elseif ($passThrough -contains '--architect') {
-    $mode = 'architect (plans, then edits)'
+} elseif ($architect) {
+    $mode = 'architect (plans, then edits; --normal to skip planning)'
 }
+if ($architect) { $aiderArgs += '--architect' }
 
 $env:OLLAMA_API_BASE = $OllamaBase
 Write-Host "Brain: $brain via Ollama | Hands: Aider ($mode)" -ForegroundColor Cyan

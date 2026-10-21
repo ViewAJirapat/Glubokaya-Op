@@ -57,6 +57,55 @@ Prerequisites: [Ollama](https://ollama.com) with `ollama pull qwen2.5-coder:7b`,
 `uv tool install --python 3.12 aider-chat`. For the Claude engines, a signed-in `claude` CLI
 (run `claude` once in a normal terminal and log in).
 
+## Set up on another PC
+
+Git carries the code, docs, tasks, `uv.lock` and the Aider source snapshot. It does **not** carry
+the AI models (~23 GB), the Python venv, the `aider-local` command, the demo repo or run logs.
+Recreate those once per PC (Windows, PowerShell):
+
+1. **Install the tools:**
+   - Git: `winget install Git.Git`
+   - uv: `winget install astral-sh.uv`
+   - Ollama: `winget install Ollama.Ollama`
+   - Optional: Docker Desktop for the sandbox; Claude Code for the Claude engines.
+2. **Clone.** The repo is private; Git opens a GitHub sign-in the first time.
+   ```
+   git clone https://github.com/ViewAJirapat/Glubokaya-Op.git
+   cd Glubokaya-Op
+   ```
+3. **Python environment and demo repo:**
+   ```
+   uv sync
+   uv run swarm demo-init
+   uv run swarm validate        # expect 4/4
+   uv run pytest -q             # expect 45 passed, 2 skipped
+   ```
+4. **Aider**, the exact tested version, and the `aider-local` command:
+   ```
+   uv tool install --python 3.12 aider-chat==0.86.2
+   uv tool update-shell                                   # puts ~\.local\bin on PATH
+   powershell -ExecutionPolicy Bypass -File local-ai\install.ps1
+   ```
+   Open a new terminal afterwards. If the Python package is ever unavailable, the source is in
+   `third_party/Aider.zip`.
+5. **Models.** Optional: if C: is small, first point Ollama at a bigger drive with
+   `setx OLLAMA_MODELS D:\ollama-models`. Then pull the default brain, plus the 7B for quick edits:
+   ```
+   ollama pull qwen2.5-coder:14b
+   ollama pull qwen2.5-coder:7b
+   ```
+   Copying the `models` folder from the old PC over USB or the network also works and skips the
+   download.
+6. **Check it:** `aider-local --list`, then `ollama ps` after a first request.
+   - The 14B default assumes ~11 GB of VRAM.
+   - With less VRAM, use `aider-local --brain 7b` or set `$DefaultBrain = '7b'` in `local-ai\aider-local.ps1`.
+   - With more, raise `num_ctx` in `local-ai/model.settings.yml`.
+
+**Working on two PCs:** run `git pull` before you start and `git push` when you stop, so neither
+copy falls behind. Benchmark logs (`runs/`) stay on the PC that made them; the results that matter
+are in this README and `HANDOVER.md`. An AI assistant on the new PC has none of this history:
+point it at `HANDOVER.md` first.
+
 ## How a run works
 
 ```
@@ -121,13 +170,38 @@ and the oracle also stay on the host (Claude is restricted to file tools).
   and the container would need write access to the shared refs. The per-command git dir
   avoids both and works with any git in the image.
 
-## First results (2026-10-20, demo tasks, 4 attempts max)
+## Results (demo tasks, 4 attempts max, GTX 1080 Ti)
+
+**Local brains (2026-10-21).** "Architect" = Aider's `--architect` mode: the same model plans the
+change in prose, then a second pass edits.
+
+| Engine | Pagination | Slugify | Durations | Discounts (2 files) | Pass | Time |
+|---|---|---|---|---|---|---|
+| **`local-14b-arch`** (qwen2.5-coder:14b, architect) | ✅ (2nd try) | ✅ | ❌ | ✅ | **3/4** | 11 min |
+| `local-14b` | ❌ | ✅ | ❌ | ✅ | 2/4 | 10 min |
+| `local-7b-arch` | ✅ (2nd try) | ✅ | ❌ | ❌ | 2/4 | 7 min |
+| `local-7b` (qwen2.5-coder:7b) | ❌ | ✅ | ❌ | ❌ | 1/4 | 12 min |
+| `local-16b` (deepseek-coder-v2:16b) | ❌ | ✅ | ❌ | ❌ | 1/4 | 16 min |
+| `local-16b-arch` | ❌ | ❌ | ❌ | ❌ | 0/4 | 22 min |
+
+What this says, with only one run per engine on 4 tasks, so treat it as a direction rather than a
+verdict:
+- **The 14B is the best local brain**, and **architect mode helps both Qwen models** (+1 task each).
+  `aider-local` defaults to 14B in architect mode.
+- **DeepSeek-Coder-V2 16B is fast but ignores instructions.** It imported the third-party
+  `unidecode` package despite "standard library only", never collapsed repeated hyphens, and in
+  architect mode lost track of Aider's edit format (it created a file literally named
+  `return slug`).
+- **Durations is unsolved by every local brain.** It's a small parser with many edge cases.
+- Speed isn't model size: the 14B runs at ~17 tokens/s (12% spills to the CPU) but needs fewer
+  attempts, so its runs finish faster than the 16B's.
+
+**Infrastructure (2026-10-20):**
 
 | Engine | Pass | Time | Notes |
 |---|---|---|---|
 | `oracle` (reference patches) | 4/4 | 25 s | every task is valid: base green, hidden tests red, solvable |
-| `local-7b` (qwen2.5-coder:7b, 1080 Ti) | 1/4 | 12 min | slugify passed first try. Pagination: same off-by-one logic every attempt. Durations: parser fails the edge cases. Discounts (2 files): never type-checks. |
-| `local-7b`, `--sandbox docker` | 1/4 | 12.5 min | same tasks pass and fail as on the host. Of the 12.5 min, only 5 were the model; most of the rest is ~120 container starts at ~4 s each. |
+| `local-7b`, `--sandbox docker` | 1/4 | 12.5 min | same tasks pass and fail as on the host. Only 5 of the 12.5 min were the model; most of the rest is ~120 container starts at ~4 s each. |
 | `oracle`, `--sandbox docker` | 4/4 | 3.6 min | 13 containers per task |
 | `claude-sonnet` | not run | | the `claude` CLI login had expired; run `claude` once in a terminal to sign in |
 
@@ -167,7 +241,8 @@ the image's `/opt/gates` venv, so add them to `docker/Dockerfile` too.
 
 | Engine | What runs |
 |---|---|
-| `local-7b`, `local-14b` | Aider + Ollama (`ollama_chat/qwen2.5-coder:*`) |
+| `local-7b`, `local-14b`, `local-16b` | Aider + Ollama (qwen2.5-coder 7B/14B, deepseek-coder-v2 16B) |
+| `local-*-arch` | the same, in Aider's architect mode (plan, then edit) |
 | `claude-sonnet`, `claude-opus` | `claude -p --restricted --tools Read,Edit,Write,Glob,Grep` |
 | `aider-sonnet` | Aider against the Anthropic API (`ANTHROPIC_API_KEY`) |
 | `oracle` | applies `solution.patch` (no model) |

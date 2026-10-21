@@ -18,18 +18,27 @@ That blueprint was reviewed and found to have structural flaws (listed in `READM
 | **Docker sandbox** for agents and gates | ✅ Done in a separate session. Opt-in: `sandbox = "docker"` per target, or `uv run swarm --sandbox docker ...`. Same pass rate as the host. |
 | **Ollama models moved off C:** | ✅ Done. Models live in `models/`. `OLLAMA_MODELS` (user env) and a junction `C:\Users\viewj\.ollama\models` → `E:\...\models` both point there. |
 | **C: disk cleanup** | ✅ The user removed WSL distro `Ubuntu-22.04` themselves. C: went from ~21 GB to 42 GB free. Robot project files were backed up first (see section 4). |
-| **"Aider = hands, local model = brain" fallback** (current task) | 🟡 In progress. Launcher `aider-local` is built and smoke-tested with the 7B model. Downloads of `qwen2.5-coder:14b` and `deepseek-coder-v2:16b` **were still running at handover**. The brain comparison benchmark has **not been run**. The default brain is still `7b`. |
+| **"Aider = hands, local model = brain" fallback** | ✅ Done. All three brains are downloaded and benchmarked. `aider-local` now defaults to **qwen2.5-coder:14b in architect mode**, the benchmark winner; `--normal` skips the planning pass. Tested end to end (a small edit takes ~40 s). Usage guide: `local-ai/README.md`. |
+| **GitHub** | ✅ Pushed to private repo `ViewAJirapat/Glubokaya-Op`, including `third_party/Aider.zip` (Aider v0.86.2 source snapshot). The brain-comparison doc and launcher updates are **not yet committed** (section 5). |
 | Claude baseline benchmark | ❌ Never ran. The standalone `claude` CLI's login had expired (section 5). |
 
-**Benchmark facts so far** (4 demo tasks, max 4 attempts each):
+**Benchmark results** (4 demo tasks, max 4 attempts each, one run per engine). Logs: `runs/compare-<engine>.log` and `runs/bench-*.json`.
 
-| Engine | Pass rate | Time | Source |
-|---|---|---|---|
-| `oracle` (reference patches) | 4/4 | 25 s | `uv run swarm validate` |
-| `local-7b` (qwen2.5-coder:7b, host) | 1/4 | 12 min | `runs/bench-local-7b-20261020-190300.json` |
-| `local-7b` (Docker sandbox) | 1/4 | 12.5 min | `runs/bench-local-7b-20261020-193938.json` |
+| Engine | Pagination | Slugify | Durations | Discounts | Pass | Time |
+|---|---|---|---|---|---|---|
+| `oracle` (reference patches) | ✅ | ✅ | ✅ | ✅ | 4/4 | 25 s |
+| **`local-14b-arch`** (qwen2.5-coder:14b, architect) | ✅ | ✅ | ❌ | ✅ | **3/4** | 11 min |
+| `local-14b` | ❌ | ✅ | ❌ | ✅ | 2/4 | 10 min |
+| `local-7b-arch` | ✅ | ✅ | ❌ | ❌ | 2/4 | 7 min |
+| `local-7b` (host, and the same in the Docker sandbox) | ❌ | ✅ | ❌ | ❌ | 1/4 | 12 min |
+| `local-16b` (deepseek-coder-v2:16b) | ❌ | ✅ | ❌ | ❌ | 1/4 | 16 min |
+| `local-16b-arch` | ❌ | ❌ | ❌ | ❌ | 0/4 | 22 min |
 
-The only task the 7B passes is `demo-002-slugify`. On pagination it resubmits the same off-by-one bug every time. On durations the parser misses edge cases. On discounts (a two-file change) it never passes the type check. These are model limits, not harness bugs: the transcripts in `runs/<run-id>/iter-N/aider.chat.md` show it.
+What the results show:
+- **Architect mode helps both Qwen models** (+1 task each). It hurts DeepSeek (see 2b).
+- **Durations is unsolved by every local brain.** It's a parser with many edge cases.
+- The 7B's failures are model limits, not harness bugs. On pagination it resubmits the same off-by-one code; on discounts it never passes the type check. The transcripts in `runs/<run-id>/iter-N/aider.chat.md` show it.
+- **This is one run per engine on 4 tasks: a direction, not a verdict.**
 
 ---
 
@@ -95,7 +104,14 @@ The only task the 7B passes is `demo-002-slugify`. On pagination it resubmits th
 8. **Moving the page file or hot data to E:.** E: is a 5,900 rpm HDD. Rejected on purpose. Rarely used data (model files, Docker images, backups) is fine there.
 9. **Scanning folder sizes with Git Bash `du`.** It took 10+ minutes without finishing on the user profile. Use `robocopy <dir> NUL /L /S /XJ /BYTES /NFL /NDL /NJH` (list-only, skips junctions) per subfolder.
 10. **Passing shell scripts through PowerShell into WSL** (`wsl -d X -- sh -c '...'`). The quoting got mangled. Use `wsl -d X -u root -e <cmd> <args...>`.
-11. **Writing reference `solution.patch` files against CRLF checkouts.** `git apply` needs LF. The demo repo's `.gitattributes` forces `eol=lf`; keep it.
+11. **Writing reference `solution.patch` files against CRLF checkouts.** `git apply` needs LF. The demo repo's `.gitattributes` forces `eol=lf`; keep it. The project repo's own `.gitattributes` also forces LF for the same reason.
+12. **DeepSeek-Coder-V2 16B as a brain.** It's fast (~48 tokens/s) but ignores instructions:
+    - it imported the third-party `unidecode` package despite "standard library only";
+    - it never collapsed repeated hyphens;
+    - in architect mode it lost Aider's edit format and created a file literally named `return slug`.
+
+    0/4 in architect mode, 1/4 normal. Don't make it the default.
+13. **Two different models as brain and hand** (`--hand`). They can't both stay on an 11 GB GPU, so Ollama would reload them from the HDD every turn. Architect mode uses the same model for both.
 
 ---
 
@@ -111,7 +127,15 @@ The only task the 7B passes is `demo-002-slugify`. On pagination it resubmits th
 | C: | 256 GB NVMe SSD, **~42 GB free and fluctuating** (14.4 GB page file). **Keep large files off C:.** |
 | E: | 1 TB **5,900 rpm HDD**, ~240 GB free. Slow; first model load from it takes ~30 s. |
 
-**Measured model fit:** `qwen2.5-coder:7b` at 16k context = 5.6 GB, 100% GPU, ~49 tokens/s. The 14B (~9 GB) and DeepSeek 16B (~8.9 GB) are **unverified**; expect partial CPU offload at 8k context.
+**Measured model fit** (`ollama ps` after loading; first load is from the E: HDD):
+
+| Model | Context | Memory | GPU share | Generation | First load |
+|---|---|---|---|---|---|
+| `qwen2.5-coder:7b` | 16k | 5.6 GB | 100% | ~49 tokens/s | ~27 s |
+| `qwen2.5-coder:14b` | 8k | 10 GB | 88% (12% on CPU) | ~17 tokens/s | ~114 s |
+| `deepseek-coder-v2:16b` | 8k | 11 GB | 82% (18% on CPU) | ~48 tokens/s (MoE) | ~84 s |
+
+Don't shrink the 14B's context below 8k to fit it fully on the GPU: Aider's prompts already reach 3–6k tokens.
 
 **Software:**
 - Windows PowerShell **5.1**: no `&&`, no ternary operator. Scripts must be **ASCII**, because the system code page is Thai and files without a BOM are misread.
@@ -161,8 +185,12 @@ The only task the 7B passes is `demo-002-slugify`. On pagination it resubmits th
 - `.worktrees/demo/`: 6 leftover failed-run worktrees. Safe to remove with `uv run swarm clean --branches`.
 
 **Local-AI fallback:**
-- `local-ai/aider-local.ps1`: the launcher. `$DefaultBrain` sits near the top.
-- `local-ai/model.settings.yml`: interactive model options.
+- `local-ai/aider-local.ps1`: the launcher. `$DefaultBrain` (`14b`) and `$DefaultArchitect` (`$true`) sit near the top.
+- `local-ai/model.settings.yml`: interactive model options (`num_predict` 8192).
+- `local-ai/README.md`: user guide (commands, brains table, tips for small models).
+- `local-ai/install.ps1`: (re)creates the `aider-local` shim in `%USERPROFILE%\.local\bin` for the current clone location. New-PC steps are in `README.md` → "Set up on another PC".
+- `third_party/Aider.zip` + `third_party/README.md`: unmodified Aider v0.86.2 source, with its commit, SHA-256 and license.
+- `runs/compare-<engine>.log`: console output of the brain-comparison runs.
 - `C:\Users\viewj\.local\bin\aider-local.cmd`: the shim that puts `aider-local` on PATH.
 
 **Model store:**
@@ -182,8 +210,14 @@ The only task the 7B passes is `demo-002-slugify`. On pagination it resubmits th
 
 ## 5. Open Issues
 
-1. **Model downloads unconfirmed.** `qwen2.5-coder:14b` and `deepseek-coder-v2:16b` were downloading at handover. Check with `ollama list`. If they're missing, re-run `ollama pull <tag>`; ask the user first if it's a fresh start.
-2. **Brain choice undecided.** The default is `7b` only because it's the one benchmarked. The 14B and 16B haven't been tested for VRAM fit or quality, and **architect mode hasn't been measured at all**.
+1. **Uncommitted changes.** Not yet committed or pushed:
+   - `local-ai/aider-local.ps1` (14B + architect default, `--normal`)
+   - `local-ai/README.md` and `local-ai/install.ps1` (new)
+   - `README.md` (results table, engines, "Set up on another PC")
+   - this file
+
+   The comparison engines in `swarm.toml` and the DeepSeek settings were already in the first commit. Commit and push only when the user asks.
+2. **The brain choice rests on thin evidence:** one run per engine on 4 tasks. A repeat run (`uv run swarm bench -e local-14b-arch -r 3`, about 35 min) would show whether 3/4 is stable. Tasks from the user's real projects would be more convincing still (issue 6).
 3. **No Claude ceiling.** Until the user logs into the `claude` CLI, there's no strong-model baseline. That makes it harder to tell "the model can't do it" from "the task or harness is unfair". (The oracle run proves the tasks are solvable.)
 4. **Ollama server after reboot.** The desktop app doesn't start a working server. `aider-local` starts `ollama serve` itself; the harness only errors with a hint. A persistent autostart (Startup shortcut or scheduled task) would fix it, but **needs the user's OK** because it's persistent config.
 5. **Docker sandbox limits:** ~4 s container startup per command (over half the sandboxed bench time); the agent container has network access; symlinks the agent creates aren't flagged by the guard. Two follow-up proposals exist: batch the gates into one container, and have the guard block symlinks.
@@ -198,21 +232,15 @@ The only task the 7B passes is `demo-002-slugify`. On pagination it resubmits th
 
 ## 6. Immediate Next Steps
 
-1. **Confirm the models.** Run `ollama list`; expect `qwen2.5-coder:7b`, `qwen2.5-coder:14b`, `deepseek-coder-v2:16b`.
-2. **Check VRAM fit per model.** Send one short prompt to each (e.g. through `aider-local --brain 14b --message "say hi"` in a scratch repo), then run `ollama ps`:
-   - The `PROCESSOR` column should be 100% GPU or close.
-   - If it's heavily split, lower `num_ctx` (e.g. 6144) in **both** `config/aider.model.settings.yml` and `local-ai/model.settings.yml`, then re-check.
-3. **Run the brain comparison**, one at a time (`-j 1`; a single GPU), from the project root, about 10–20 min each:
-   - `uv run swarm clean --branches`
-   - `uv run swarm bench -e local-7b-arch`
-   - `uv run swarm bench -e local-14b`
-   - `uv run swarm bench -e local-14b-arch`
-   - `uv run swarm bench -e local-16b`
-   - `uv run swarm bench -e local-16b-arch`
+The brain comparison is finished; nothing is mid-flight.
 
-   Baseline to beat: `local-7b` = 1/4. Results land in `runs/bench-<engine>-*.json`. For any failure, read `runs/<run-id>/iter-*/aider.chat.md` to separate model limits from harness problems before concluding anything.
-4. **Pick the default brain:** highest pass rate, ties broken by total time. Set `$DefaultBrain` in `local-ai/aider-local.ps1`. If architect mode wins, document `aider-local --architect` as the recommended way to use it.
-5. **Write `local-ai/README.md`** (usage, `--brain`, `--architect`, `--list`, what to expect from a local brain) and add the comparison rows to the results table in `README.md`.
-6. **Optional, needs the user:**
-   - The user logs into the `claude` CLI, then run `uv run swarm bench -e claude-sonnet` for the ceiling.
-   - Decide on an Ollama autostart at login.
+1. **If the user asks: commit and push** the changes listed in section 5, issue 1. Run the health checks in section 4 first.
+2. **Confirm the brain choice with repeat runs** (optional, ~35 min of GPU time): `uv run swarm bench -e local-14b-arch -r 3`. If it holds at ≥2/4, keep the default. Then add 2–3 tasks from the user's own code (see `README.md` → "Adding your own repo") and re-run the top two engines.
+3. **Needs the user:**
+   - They log into the `claude` CLI; then run `uv run swarm bench -e claude-sonnet` to get the ceiling.
+   - Decide whether Ollama should autostart at login (persistent config: ask first).
+4. **Don't redo:** downloading or benchmarking the 7B/14B/16B (done, results above) or the Aider tuning in section 2. To try a new brain:
+   1. `ollama pull <tag>` (ask first; give the size).
+   2. Add it to `config/aider.model.settings.yml`, `local-ai/model.settings.yml`, the `$Brains` table in `local-ai/aider-local.ps1`, and an engine in `swarm.toml`.
+   3. Check the GPU fit with `ollama ps`.
+   4. Benchmark it against `local-14b-arch`.
