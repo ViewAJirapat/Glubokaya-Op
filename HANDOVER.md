@@ -5,7 +5,7 @@
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
 - **Before changing anything:** read sections 2 and 3. Every "don't" in section 2b cost real time to discover.
-- **Workflow diagrams:** [`docs/diagrams/overview.svg`](docs/diagrams/overview.svg) (how the parts connect) and [`docs/diagrams/task-loop.svg`](docs/diagrams/task-loop.svg) (what the harness does per task).
+- **Workflow diagrams:** [`docs/diagrams/overview.svg`](docs/diagrams/overview.svg) (how the parts connect) and [`docs/diagrams/task-loop.svg`](docs/diagrams/task-loop.svg) (what the harness does per task, including where the hidden tests come from).
 
 ---
 

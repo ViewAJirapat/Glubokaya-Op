@@ -14,7 +14,10 @@ Two ways in, one set of hands (Aider) and one brain (a local model in Ollama):
 
 ![Project overview](docs/diagrams/overview.svg)
 
-What the harness does for each task. The harness, not the AI, decides when the work is done:
+What the harness does for each task. The harness, not the AI, decides when the work is done.
+The hidden tests (purple) are the answer key: they live in `tasks/<id>/acceptance/`, outside
+the worktree, so the agent never sees them. They must fail on the base commit and pass after
+the edit:
 
 ![Harness loop for one task](docs/diagrams/task-loop.svg)
 
