@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 370" width="680" height="370" role="img" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
   <title>Glubokaya-Op overview</title>
-  <desc>Two entry points, the swarm harness and aider-local, both drive Aider (the hands), which uses a local Ollama model on the GPU (the brain). The harness can optionally use Claude Code instead.</desc>
+  <desc>Two entry points, the swarm harness and aider-local, both drive Aider (the hands), which uses a local Ollama model on the GPU (the brain): qwen2.5-coder 14B by default, or qwen3-coder 30B, 7B or 16B. The harness can optionally use Claude Code instead.</desc>
   <style>
     .bg { fill: #ffffff; }
     .box { fill: #F1EFE8; stroke: #888780; stroke-width: 0.5; }
@@ -54,6 +54,6 @@
   <line class="arr" x1="340" y1="206" x2="340" y2="268" marker-end="url(#arrow)"/>
 
   <rect class="box" x="215" y="270" width="250" height="56" rx="8"/>
-  <text class="th" x="340" y="288" text-anchor="middle" dominant-baseline="central">Ollama · qwen2.5-coder 14B</text>
-  <text class="ts" x="340" y="308" text-anchor="middle" dominant-baseline="central">The brain: local model on the GPU</text>
+  <text class="th" x="340" y="288" text-anchor="middle" dominant-baseline="central">Ollama · local models</text>
+  <text class="ts" x="340" y="308" text-anchor="middle" dominant-baseline="central">The brain: 14B (default), 30B or 7B</text>
 </svg>

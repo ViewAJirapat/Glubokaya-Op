@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 620" width="680" height="620" role="img" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <title>Parallel tasks without merge conflicts</title>
+  <desc>Three shopapi tasks (temperature, textstats, roman) each run in their own worktree and branch, and each task's scope lets it change only its own feature folder; the guard undoes anything else. swarm integrate merges the passing branches and reruns every check. They merge without conflicts because a feature is a folder that the app finds at startup, so no shared file has to change. The architecture rules, kept in swarm.toml, stop features from importing each other or anything but the public API in core.</desc>
+  <style>
+    .bg { fill: #ffffff; }
+    .box { fill: #F1EFE8; stroke: #888780; stroke-width: 0.5; }
+    .purple { fill: #EEEDFE; stroke: #534AB7; stroke-width: 0.5; }
+    .teal { fill: #E1F5EE; stroke: #0F6E56; stroke-width: 0.5; }
+    .th { font-size: 14px; font-weight: 600; fill: #2C2C2A; }
+    .ts { font-size: 12px; fill: #5F5E5A; }
+    .mono { font-family: Consolas, 'Cascadia Mono', Menlo, monospace; font-size: 12px; fill: #2C2C2A; white-space: pre; }
+    .purple-t { fill: #3C3489; } .purple-s { fill: #534AB7; }
+    .teal-t { fill: #085041; } .teal-s { fill: #0F6E56; }
+    .arr { stroke: #73726C; stroke-width: 1.5; fill: none; }
+    .head { stroke: #73726C; }
+    .dash { stroke-dasharray: 4 3; }
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #1F1E1D; }
+      .box { fill: #2C2C2A; stroke: #B4B2A9; }
+      .purple { fill: #3C3489; stroke: #AFA9EC; }
+      .teal { fill: #085041; stroke: #5DCAA5; }
+      .th { fill: #F1EFE8; } .ts { fill: #B4B2A9; } .mono { fill: #F1EFE8; }
+      .purple-t { fill: #EEEDFE; } .purple-s { fill: #CECBF6; }
+      .teal-t { fill: #E1F5EE; } .teal-s { fill: #9FE1CB; }
+      .arr, .head { stroke: #9C9A92; }
+    }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path class="head" d="M2 1L8 5L2 9" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="680" height="620"/>
+
+  <!-- Row 1: three tasks, run in parallel -->
+  <rect class="teal" x="35" y="30" width="190" height="56" rx="8"/>
+  <text class="th teal-t" x="130" y="48" text-anchor="middle" dominant-baseline="central">temperature</text>
+  <text class="ts teal-s" x="130" y="68" text-anchor="middle" dominant-baseline="central">Task api-001</text>
+
+  <rect class="teal" x="245" y="30" width="190" height="56" rx="8"/>
+  <text class="th teal-t" x="340" y="48" text-anchor="middle" dominant-baseline="central">textstats</text>
+  <text class="ts teal-s" x="340" y="68" text-anchor="middle" dominant-baseline="central">Task api-002</text>
+
+  <rect class="teal" x="455" y="30" width="190" height="56" rx="8"/>
+  <text class="th teal-t" x="550" y="48" text-anchor="middle" dominant-baseline="central">roman</text>
+  <text class="ts teal-s" x="550" y="68" text-anchor="middle" dominant-baseline="central">Task api-003</text>
+
+  <line class="arr" x1="130" y1="86" x2="130" y2="114" marker-end="url(#arrow)"/>
+  <line class="arr" x1="340" y1="86" x2="340" y2="114" marker-end="url(#arrow)"/>
+  <line class="arr" x1="550" y1="86" x2="550" y2="114" marker-end="url(#arrow)"/>
+
+  <!-- Row 2: each task runs the full loop in its own worktree, limited by its scope -->
+  <rect class="box" x="35" y="116" width="190" height="56" rx="8"/>
+  <text class="th" x="130" y="134" text-anchor="middle" dominant-baseline="central">Task loop</text>
+  <text class="ts" x="130" y="154" text-anchor="middle" dominant-baseline="central">Own worktree, own folder</text>
+
+  <rect class="box" x="245" y="116" width="190" height="56" rx="8"/>
+  <text class="th" x="340" y="134" text-anchor="middle" dominant-baseline="central">Task loop</text>
+  <text class="ts" x="340" y="154" text-anchor="middle" dominant-baseline="central">Own worktree, own folder</text>
+
+  <rect class="box" x="455" y="116" width="190" height="56" rx="8"/>
+  <text class="th" x="550" y="134" text-anchor="middle" dominant-baseline="central">Task loop</text>
+  <text class="ts" x="550" y="154" text-anchor="middle" dominant-baseline="central">Own worktree, own folder</text>
+
+  <line class="arr" x1="130" y1="172" x2="236" y2="236" marker-end="url(#arrow)"/>
+  <line class="arr" x1="340" y1="172" x2="340" y2="236" marker-end="url(#arrow)"/>
+  <line class="arr" x1="550" y1="172" x2="444" y2="236" marker-end="url(#arrow)"/>
+
+  <!-- Row 3: integrate -->
+  <rect class="box" x="150" y="238" width="380" height="56" rx="8"/>
+  <text class="th" x="340" y="256" text-anchor="middle" dominant-baseline="central">swarm integrate</text>
+  <text class="ts" x="340" y="276" text-anchor="middle" dominant-baseline="central">Merge the branches, rerun every check and hidden test</text>
+  <line class="arr" x1="340" y1="294" x2="340" y2="322" marker-end="url(#arrow)"/>
+
+  <!-- Row 4: merged -->
+  <rect class="teal" x="150" y="324" width="380" height="56" rx="8"/>
+  <text class="th teal-t" x="340" y="342" text-anchor="middle" dominant-baseline="central">Merged with no conflicts</text>
+  <text class="ts teal-s" x="340" y="362" text-anchor="middle" dominant-baseline="central">Each branch only added its own folder</text>
+  <line class="arr" x1="220" y1="380" x2="220" y2="414" marker-end="url(#arrow)"/>
+
+  <!-- Row 5: why it works: the folder tree, and the rules that keep it that way -->
+  <rect class="box" x="35" y="416" width="370" height="174" rx="8"/>
+  <text class="th" x="55" y="438" dominant-baseline="central">Why: a feature is a folder</text>
+  <text xml:space="preserve" class="mono" x="55" y="464" dominant-baseline="central">src/shopapi/</text>
+  <text xml:space="preserve" class="mono" x="55" y="482" dominant-baseline="central">  core/     registry, API (protected)</text>
+  <text xml:space="preserve" class="mono" x="55" y="500" dominant-baseline="central">  app.py    finds features at startup</text>
+  <text xml:space="preserve" class="mono" x="55" y="518" dominant-baseline="central">  features/</text>
+  <text xml:space="preserve" class="mono" x="55" y="536" dominant-baseline="central">    health/  products/   already there</text>
+  <text xml:space="preserve" class="mono teal-t" x="55" y="554" dominant-baseline="central">    temperature/  textstats/  roman/</text>
+  <text class="ts teal-s" x="55" y="574" dominant-baseline="central">No shared routes file, so nothing to collide on</text>
+
+  <rect class="purple dash" x="425" y="416" width="220" height="174" rx="8"/>
+  <text class="th purple-t" x="535" y="438" text-anchor="middle" dominant-baseline="central">Architecture rules</text>
+  <text class="ts purple-s" x="535" y="464" text-anchor="middle" dominant-baseline="central">Checked in every gate run</text>
+  <text class="ts purple-s" x="535" y="490" text-anchor="middle" dominant-baseline="central">A feature imports only the</text>
+  <text class="ts purple-s" x="535" y="508" text-anchor="middle" dominant-baseline="central">public API in core</text>
+  <text class="ts purple-s" x="535" y="526" text-anchor="middle" dominant-baseline="central">Never another feature</text>
+  <text class="ts purple-s" x="535" y="552" text-anchor="middle" dominant-baseline="central">In swarm.toml:</text>
+  <text class="ts purple-s" x="535" y="570" text-anchor="middle" dominant-baseline="central">the agent can't edit them</text>
+</svg>

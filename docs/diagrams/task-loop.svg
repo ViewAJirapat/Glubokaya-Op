@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 762" width="680" height="762" role="img" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
   <title>swarm harness: one task</title>
-  <desc>The hidden tests (the answer key) live in tasks/id/acceptance, outside the worktree, so the agent can't see them. They must fail in the baseline check (else invalid_task) and run as their own step after the gates. On pass the harness commits the branch; on fail the errors are fed back and the agent retries, up to four attempts, after which the worktree and patch are kept.</desc>
+  <desc>The hidden tests (the answer key) live in tasks/id/acceptance, outside the worktree, so the agent can't see them. They must fail in the baseline check (else invalid_task) and run as their own step after the gates. The target's rules (swarm.toml and task.toml: the task's scope, protected paths and import rules) are also outside the agent's reach: the guard undoes edits outside the scope or to protected paths, and the gates include the import-rule check. On pass the harness commits exactly what was checked; on fail the errors are fed back and the agent retries, up to four attempts, after which the worktree and patch are kept.</desc>
   <style>
     .bg { fill: #ffffff; }
     .box { fill: #F1EFE8; stroke: #888780; stroke-width: 0.5; }
@@ -51,13 +51,22 @@
 
   <rect class="box" x="100" y="288" width="240" height="56" rx="8"/>
   <text class="th" x="220" y="306" text-anchor="middle" dominant-baseline="central">Autofix + guard</text>
-  <text class="ts" x="220" y="326" text-anchor="middle" dominant-baseline="central">Format, undo cheating edits</text>
+  <text class="ts" x="220" y="326" text-anchor="middle" dominant-baseline="central">Format, undo disallowed edits</text>
   <line class="arr" x1="220" y1="344" x2="220" y2="372" marker-end="url(#arrow)"/>
 
   <rect class="box" x="100" y="374" width="240" height="56" rx="8"/>
   <text class="th" x="220" y="392" text-anchor="middle" dominant-baseline="central">Gates</text>
-  <text class="ts" x="220" y="412" text-anchor="middle" dominant-baseline="central">ruff, mypy, visible tests</text>
+  <text class="ts" x="220" y="412" text-anchor="middle" dominant-baseline="central">ruff, mypy, tests, import rules</text>
   <line class="arr" x1="220" y1="430" x2="220" y2="458" marker-end="url(#arrow)"/>
+
+  <rect class="purple dash" x="380" y="292" width="220" height="134" rx="8"/>
+  <text class="th purple-t" x="490" y="314" text-anchor="middle" dominant-baseline="central">Target rules</text>
+  <text class="ts purple-s" x="490" y="338" text-anchor="middle" dominant-baseline="central">Task scope, protected paths</text>
+  <text class="ts purple-s" x="490" y="356" text-anchor="middle" dominant-baseline="central">Import rules (architecture)</text>
+  <text class="ts purple-s" x="490" y="380" text-anchor="middle" dominant-baseline="central">swarm.toml, task.toml</text>
+  <text class="ts purple-s" x="490" y="398" text-anchor="middle" dominant-baseline="central">Agent can't edit them</text>
+  <line class="arr dash" x1="380" y1="316" x2="342" y2="316" marker-end="url(#arrow)"/>
+  <line class="arr dash" x1="380" y1="402" x2="342" y2="402" marker-end="url(#arrow)"/>
 
   <rect class="purple" x="100" y="460" width="240" height="56" rx="8"/>
   <text class="th purple-t" x="220" y="478" text-anchor="middle" dominant-baseline="central">Hidden tests</text>
@@ -68,7 +77,7 @@
   <text class="ts purple-s" x="540" y="488" text-anchor="middle" dominant-baseline="central">tasks/&lt;id&gt;/acceptance/</text>
   <text class="ts purple-s" x="540" y="506" text-anchor="middle" dominant-baseline="central">Agent can't see it</text>
   <line class="arr dash" x1="440" y1="488" x2="342" y2="488" marker-end="url(#arrow)"/>
-  <path class="arr dash" d="M540 452 L540 164 L342 164" marker-end="url(#arrow)"/>
+  <path class="arr dash" d="M620 452 L620 164 L342 164" marker-end="url(#arrow)"/>
 
   <line class="arr" x1="190" y1="516" x2="165" y2="564" marker-end="url(#arrow)"/>
   <line class="arr" x1="250" y1="516" x2="370" y2="564" marker-end="url(#arrow)"/>
@@ -79,7 +88,7 @@
 
   <rect class="box" x="280" y="566" width="220" height="56" rx="8"/>
   <text class="th" x="390" y="584" text-anchor="middle" dominant-baseline="central">Pass</text>
-  <text class="ts" x="390" y="604" text-anchor="middle" dominant-baseline="central">Harness commits the branch</text>
+  <text class="ts" x="390" y="604" text-anchor="middle" dominant-baseline="central">Commits exactly what passed</text>
 
   <path class="arr" d="M60 594 L30 594 L30 230 L98 230" marker-end="url(#arrow)"/>
   <text class="ts" x="38" y="359">Retry, max 4</text>

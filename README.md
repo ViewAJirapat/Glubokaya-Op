@@ -18,6 +18,11 @@ What the harness does for each task. The harness, not the AI, decides when the w
 
 ![Harness loop for one task](docs/diagrams/task-loop.svg)
 
+Many tasks at once. Each changes only its own feature folder, so the branches merge without
+conflicts (see "Parallel-friendly targets" below):
+
+![Parallel tasks merged without conflicts](docs/diagrams/parallel.svg)
+
 ## What changed from the blueprint
 
 | Blueprint problem | v0 |
@@ -354,6 +359,6 @@ tests/            harness tests (scripted agents: cheater, noop, cosmetic, crash
 local-ai/         aider-local launcher (Aider + local Ollama model) and its model settings
 third_party/      Aider.zip: unmodified Aider v0.86.2 source snapshot (see third_party/README.md)
 HANDOVER.md       developer handover: status, decisions, failed approaches, new-PC steps
-docs/diagrams/    workflow diagrams (overview.svg, task-loop.svg)
+docs/diagrams/    workflow diagrams (overview.svg, task-loop.svg, parallel.svg)
 work/ .worktrees/ runs/ models/   generated or downloaded, git-ignored
 ```
