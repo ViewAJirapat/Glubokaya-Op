@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 762" width="680" height="762" role="img" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
   <title>swarm harness: one task</title>
-  <desc>The hidden tests (the answer key) live in tasks/id/acceptance, outside the worktree, so the agent can't see them. They must fail in the baseline check (else invalid_task) and run as their own step after the gates. The target's rules (swarm.toml and task.toml: the task's scope, protected paths and import rules) are also outside the agent's reach: the guard undoes edits outside the scope or to protected paths, and the gates include the import-rule check. On pass the harness commits exactly what was checked; on fail the errors are fed back and the agent retries, up to four attempts, after which the worktree and patch are kept.</desc>
+  <desc>The hidden tests (the answer key) live in tasks/target/id/acceptance, outside the worktree, so the agent can't see them. They must fail in the baseline check (else invalid_task) and run as their own step after the gates. The target's rules (swarm.toml and task.toml: protected paths, plus a task scope and import rules when the target sets them, as shopapi does) are also outside the agent's edit tools: the guard undoes edits to protected paths or outside the scope, and the gates include the import-rule check. On pass the harness commits only the paths it checked (in the Docker sandbox, with read-only checks, exactly what passed); on fail the errors are fed back and the agent retries, up to four attempts, after which the worktree and patch are kept. Four is the total number of attempts.</desc>
   <style>
     .bg { fill: #ffffff; }
     .box { fill: #F1EFE8; stroke: #888780; stroke-width: 0.5; }
@@ -56,15 +56,16 @@
 
   <rect class="box" x="100" y="374" width="240" height="56" rx="8"/>
   <text class="th" x="220" y="392" text-anchor="middle" dominant-baseline="central">Gates</text>
-  <text class="ts" x="220" y="412" text-anchor="middle" dominant-baseline="central">ruff, mypy, tests, import rules</text>
+  <text class="ts" x="220" y="412" text-anchor="middle" dominant-baseline="central">ruff, mypy, tests (+ import rules)</text>
   <line class="arr" x1="220" y1="430" x2="220" y2="458" marker-end="url(#arrow)"/>
 
   <rect class="purple dash" x="380" y="292" width="220" height="134" rx="8"/>
   <text class="th purple-t" x="490" y="314" text-anchor="middle" dominant-baseline="central">Target rules</text>
-  <text class="ts purple-s" x="490" y="338" text-anchor="middle" dominant-baseline="central">Task scope, protected paths</text>
-  <text class="ts purple-s" x="490" y="356" text-anchor="middle" dominant-baseline="central">Import rules (architecture)</text>
-  <text class="ts purple-s" x="490" y="380" text-anchor="middle" dominant-baseline="central">swarm.toml, task.toml</text>
-  <text class="ts purple-s" x="490" y="398" text-anchor="middle" dominant-baseline="central">Agent can't edit them</text>
+  <text class="ts purple-s" x="490" y="334" text-anchor="middle" dominant-baseline="central">Protected paths</text>
+  <text class="ts purple-s" x="490" y="352" text-anchor="middle" dominant-baseline="central">Task scope, import rules</text>
+  <text class="ts purple-s" x="490" y="370" text-anchor="middle" dominant-baseline="central">(if the target sets them)</text>
+  <text class="ts purple-s" x="490" y="392" text-anchor="middle" dominant-baseline="central">swarm.toml, task.toml</text>
+  <text class="ts purple-s" x="490" y="410" text-anchor="middle" dominant-baseline="central">Agent can't edit them</text>
   <line class="arr dash" x1="380" y1="316" x2="342" y2="316" marker-end="url(#arrow)"/>
   <line class="arr dash" x1="380" y1="402" x2="342" y2="402" marker-end="url(#arrow)"/>
 
@@ -72,11 +73,11 @@
   <text class="th purple-t" x="220" y="478" text-anchor="middle" dominant-baseline="central">Hidden tests</text>
   <text class="ts purple-s" x="220" y="498" text-anchor="middle" dominant-baseline="central">Run against the worktree</text>
 
-  <rect class="purple dash" x="440" y="452" width="200" height="72" rx="8"/>
-  <text class="th purple-t" x="540" y="470" text-anchor="middle" dominant-baseline="central">Answer key</text>
-  <text class="ts purple-s" x="540" y="488" text-anchor="middle" dominant-baseline="central">tasks/&lt;id&gt;/acceptance/</text>
-  <text class="ts purple-s" x="540" y="506" text-anchor="middle" dominant-baseline="central">Agent can't see it</text>
-  <line class="arr dash" x1="440" y1="488" x2="342" y2="488" marker-end="url(#arrow)"/>
+  <rect class="purple dash" x="400" y="452" width="240" height="72" rx="8"/>
+  <text class="th purple-t" x="520" y="470" text-anchor="middle" dominant-baseline="central">Answer key</text>
+  <text class="ts purple-s" x="520" y="488" text-anchor="middle" dominant-baseline="central">tasks/&lt;target&gt;/&lt;id&gt;/acceptance/</text>
+  <text class="ts purple-s" x="520" y="506" text-anchor="middle" dominant-baseline="central">Agent can't see it</text>
+  <line class="arr dash" x1="400" y1="488" x2="342" y2="488" marker-end="url(#arrow)"/>
   <path class="arr dash" d="M620 452 L620 164 L342 164" marker-end="url(#arrow)"/>
 
   <line class="arr" x1="190" y1="516" x2="165" y2="564" marker-end="url(#arrow)"/>
@@ -88,10 +89,11 @@
 
   <rect class="box" x="280" y="566" width="220" height="56" rx="8"/>
   <text class="th" x="390" y="584" text-anchor="middle" dominant-baseline="central">Pass</text>
-  <text class="ts" x="390" y="604" text-anchor="middle" dominant-baseline="central">Commits exactly what passed</text>
+  <text class="ts" x="390" y="604" text-anchor="middle" dominant-baseline="central">Commits only the checked paths</text>
 
   <path class="arr" d="M60 594 L30 594 L30 230 L98 230" marker-end="url(#arrow)"/>
-  <text class="ts" x="38" y="359">Retry, max 4</text>
+  <text class="ts" x="38" y="350">Up to</text>
+  <text class="ts" x="38" y="366">4 attempts</text>
 
   <line class="arr" x1="160" y1="622" x2="160" y2="664" marker-end="url(#arrow)"/>
   <line class="arr" x1="390" y1="622" x2="390" y2="664" marker-end="url(#arrow)"/>

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 620" width="680" height="620" role="img" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
   <title>Parallel tasks without merge conflicts</title>
-  <desc>Three shopapi tasks (temperature, textstats, roman) each run in their own worktree and branch, and each task's scope lets it change only its own feature folder; the guard undoes anything else. swarm integrate merges the passing branches and reruns every check. They merge without conflicts because a feature is a folder that the app finds at startup, so no shared file has to change. The architecture rules, kept in swarm.toml, stop features from importing each other or anything but the public API in core.</desc>
+  <desc>Three shopapi tasks (temperature, textstats, roman) each run in their own worktree and branch, and each task's scope lets it change only its own feature folder; the guard undoes anything else. swarm integrate merges the passing branches and reruns every check. They merge without conflicts because a feature is a folder that the app finds at startup, so no shared file has to change. The architecture rules, kept in swarm.toml, stop a feature from importing anything but its own folder and the public API in core.</desc>
   <style>
     .bg { fill: #ffffff; }
     .box { fill: #F1EFE8; stroke: #888780; stroke-width: 0.5; }
@@ -86,14 +86,14 @@
   <text xml:space="preserve" class="mono" x="55" y="500" dominant-baseline="central">  app.py    finds features at startup</text>
   <text xml:space="preserve" class="mono" x="55" y="518" dominant-baseline="central">  features/</text>
   <text xml:space="preserve" class="mono" x="55" y="536" dominant-baseline="central">    health/  products/   already there</text>
-  <text xml:space="preserve" class="mono teal-t" x="55" y="554" dominant-baseline="central">    temperature/  textstats/  roman/</text>
+  <text xml:space="preserve" class="mono teal-s" x="55" y="554" dominant-baseline="central">    temperature/  textstats/  roman/   new</text>
   <text class="ts teal-s" x="55" y="574" dominant-baseline="central">No shared routes file, so nothing to collide on</text>
 
   <rect class="purple dash" x="425" y="416" width="220" height="174" rx="8"/>
   <text class="th purple-t" x="535" y="438" text-anchor="middle" dominant-baseline="central">Architecture rules</text>
   <text class="ts purple-s" x="535" y="464" text-anchor="middle" dominant-baseline="central">Checked in every gate run</text>
-  <text class="ts purple-s" x="535" y="490" text-anchor="middle" dominant-baseline="central">A feature imports only the</text>
-  <text class="ts purple-s" x="535" y="508" text-anchor="middle" dominant-baseline="central">public API in core</text>
+  <text class="ts purple-s" x="535" y="490" text-anchor="middle" dominant-baseline="central">A feature imports only its</text>
+  <text class="ts purple-s" x="535" y="508" text-anchor="middle" dominant-baseline="central">folder and the API in core</text>
   <text class="ts purple-s" x="535" y="526" text-anchor="middle" dominant-baseline="central">Never another feature</text>
   <text class="ts purple-s" x="535" y="552" text-anchor="middle" dominant-baseline="central">In swarm.toml:</text>
   <text class="ts purple-s" x="535" y="570" text-anchor="middle" dominant-baseline="central">the agent can't edit them</text>

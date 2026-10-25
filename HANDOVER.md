@@ -77,7 +77,7 @@ are tied; repeat runs (`-r 3`) would settle the default brain.
 - **Retry prompt = full task + rules + all failures**, clipped to a size budget (head 30% / tail 70%, since summaries come last). Why: each agent call starts with no memory, and the blueprint's retries dropped the task.
 - **"Stuck" warning** when an attempt's diff equals the previous one. Why: small models resubmit identical wrong code.
 - **Fail fast:** an agent error (auth, crash, timeout) with no changes stops the run, instead of burning all 4 attempts.
-- **Commits come from the harness**, with explicit guard-approved paths and author `swarm-agent`. The index is reset before the guard runs and again before committing, with literal pathspecs, so the commit is exactly the working tree that was checked. Before 2026-10-25 an agent could stage a change, restore the file on disk, and have it committed unchecked.
+- **Commits come from the harness**, with explicit guard-approved paths and author `swarm-agent`. The index is reset before the guard runs and again before committing, with literal pathspecs, so nothing staged behind the guard's back gets in; the commit holds only the checked paths. (On the host, code run by the checks could still change a file before the commit; the Docker sandbox's read-only checks make it exactly what passed.) Before 2026-10-25 an agent could stage a change, restore the file on disk, and have it committed unchecked.
   - Agents get an allowlisted environment; git credential helpers and remote protocols are disabled (`swarm/util.py:agent_env`).
   - Pushing happens only from the harness, after the gate, with `--push`.
 - **Rules (`AGENTS.md`) are read from the base commit**, so an agent can't rewrite its own rules.
