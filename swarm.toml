@@ -58,6 +58,69 @@ forbidden_added = [
   'collect_ignore',
 ]
 
+# A JSON web API built for parallel agents: every feature is its own folder, found at
+# startup by auto-discovery, so tasks never edit a shared file and their branches merge
+# cleanly. The architecture rules below keep it that way.
+[targets.shopapi]
+repo = "work/shopapi_repo"   # `swarm -t shopapi demo-init`
+template = "demo/shopapi"
+base = "main"
+tasks = "tasks/shopapi"
+rules_file = "AGENTS.md"
+pythonpath = ["src"]
+import_check = "shopapi"
+sandbox = "none"
+verify = [
+  ["{python}", "-m", "ruff", "check", "."],
+  ["{python}", "-m", "ruff", "format", "--check", "."],
+  ["{python}", "-m", "mypy", "src"],
+  ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"],
+]
+autofix = [
+  ["{python}", "-m", "ruff", "check", "--fix", "--exit-zero", "--quiet", "."],
+  ["{python}", "-m", "ruff", "format", "--quiet", "."],
+]
+# The demo list plus the app's frame: agents only ever add or change feature folders.
+# app/ and __main__/ too: a package with the same name would shadow the protected module.
+# Each task also has a `scope` (task.toml) limiting it to its own feature folder.
+protected = [
+  "tests/**", "conftest.py", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini",
+  "pytest.ini", "mypy.ini", ".mypy.ini", "ruff.toml", ".ruff.toml", "sitecustomize.py",
+  "usercustomize.py", "AGENTS.md", "CLAUDE.md", ".claude", ".git*", ".aider*",
+  "src/shopapi/core/**", "src/shopapi/app.py", "src/shopapi/app/**", "src/shopapi/__init__.py",
+  "src/shopapi/__main__.py", "src/shopapi/__main__/**", "src/shopapi/features/__init__.py",
+]
+# Protected files are hidden from Aider; these are the API features code against, so show
+# them read-only.
+context_files = ["src/shopapi/core/api.py", "src/shopapi/core/http.py"]
+forbidden_added = [
+  '#\s*type:\s*ignore',
+  '#\s*noqa',
+  '#\s*pragma:\s*no\s*cover',
+  'pytest\.(mark\.)?(skip|xfail|importorskip)',
+  'unittest\.skip',
+  'collect_ignore',
+]
+
+# Import rules, checked by the harness as an extra gate (swarm/archlint.py). They live
+# here, outside the worktree, so an agent can't relax them. Patterns are dotted module
+# names: '*' is one segment, '**' any number (including none).
+[targets.shopapi.architecture]
+root = "src"
+packages = ["shopapi"]      # no first-party code outside shopapi (else src/bridge.py launders imports)
+independent = ["shopapi.features.*"]
+
+[[targets.shopapi.architecture.forbid]]
+from = "shopapi.core.**"
+to = ["shopapi.features.**", "shopapi.app", "shopapi.__main__"]
+fix = "core is the stable base and must not know about features or the app. Features plug in through @route."
+
+[[targets.shopapi.architecture.forbid]]
+from = "shopapi.features.**"
+to = "shopapi.**"
+allow = ["shopapi.core.api", "shopapi.features.**"]
+fix = "A feature may import only the public contract shopapi.core.api (route, Request, Response, HTTPError) and modules in its own folder."
+
 # ---------------------------------------------------------------------------
 # Docker sandbox, for targets with sandbox = "docker" (or `swarm --sandbox docker ...`).
 # Build the image once with `uv run swarm docker-build`. Values shown are the defaults.
@@ -119,6 +182,22 @@ extra_args = ["--map-tokens", "1024", "--architect"]
 [engines.local-16b-arch]
 kind = "aider"
 model = "ollama_chat/deepseek-coder-v2:16b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024", "--architect"]
+
+# Qwen3-Coder 30B (MoE, 3B active), the successor of qwen2.5-coder. ~18 GB, so on a
+# 12 GB GPU about half of it runs on the CPU.
+[engines.local-30b]
+kind = "aider"
+model = "ollama_chat/qwen3-coder:30b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "1024"]
+
+[engines.local-30b-arch]
+kind = "aider"
+model = "ollama_chat/qwen3-coder:30b"
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024", "--architect"]

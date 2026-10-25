@@ -15,6 +15,9 @@ class Task:
     dir: Path
     type: str = "fix"  # Conventional Commit type for the final commit
     files: list[str] = field(default_factory=list)  # hint: files the agent should start from
+    # Paths this task may change (guard patterns). Empty: anything not protected. Edits
+    # outside are reverted, so tasks built in parallel can't collide on shared files.
+    scope: list[str] = field(default_factory=list)
 
     @property
     def acceptance_dir(self) -> Path | None:
@@ -40,6 +43,10 @@ def load_task(task_dir: Path) -> Task:
     for key in ("title", "prompt"):
         if not raw.get(key):
             raise TaskError(f"{spec}: missing {key!r}")
+    for key in ("files", "scope"):
+        value = raw.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+            raise TaskError(f"{spec}: {key!r} must be a list of paths")
     return Task(
         id=raw.get("id", task_dir.name),
         title=raw["title"],
@@ -47,6 +54,7 @@ def load_task(task_dir: Path) -> Task:
         dir=task_dir.resolve(),
         type=raw.get("type", "fix"),
         files=list(raw.get("files", [])),
+        scope=list(raw.get("scope", [])),
     )
 
 

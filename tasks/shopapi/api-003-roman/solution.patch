@@ -1,0 +1,58 @@
+diff --git a/src/shopapi/features/roman/__init__.py b/src/shopapi/features/roman/__init__.py
+new file mode 100644
+index 0000000..06f79b4
+--- /dev/null
++++ b/src/shopapi/features/roman/__init__.py
+@@ -0,0 +1 @@
++"""Roman numerals."""
+diff --git a/src/shopapi/features/roman/handler.py b/src/shopapi/features/roman/handler.py
+new file mode 100644
+index 0000000..f8286bb
+--- /dev/null
++++ b/src/shopapi/features/roman/handler.py
+@@ -0,0 +1,16 @@
++from shopapi.core.api import HTTPError, Request, Response, route
++from shopapi.features.roman.numerals import to_roman
++
++
++@route("GET", "/roman/{number}")
++def roman(request: Request) -> Response:
++    raw = request.params["number"]
++    if not (raw.isascii() and raw.isdigit()):
++        raise HTTPError(400, f"not a whole number: {raw!r}")
++    digits = raw.lstrip("0") or "0"
++    if len(digits) > 4:  # also keeps int() away from its 4300-digit limit
++        raise HTTPError(400, "number must be between 1 and 3999")
++    number = int(digits)
++    if not 1 <= number <= 3999:
++        raise HTTPError(400, "number must be between 1 and 3999")
++    return Response(200, {"number": number, "roman": to_roman(number)})
+diff --git a/src/shopapi/features/roman/numerals.py b/src/shopapi/features/roman/numerals.py
+new file mode 100644
+index 0000000..3298ab4
+--- /dev/null
++++ b/src/shopapi/features/roman/numerals.py
+@@ -0,0 +1,23 @@
++SYMBOLS = [
++    (1000, "M"),
++    (900, "CM"),
++    (500, "D"),
++    (400, "CD"),
++    (100, "C"),
++    (90, "XC"),
++    (50, "L"),
++    (40, "XL"),
++    (10, "X"),
++    (9, "IX"),
++    (5, "V"),
++    (4, "IV"),
++    (1, "I"),
++]
++
++
++def to_roman(number: int) -> str:
++    out: list[str] = []
++    for value, symbol in SYMBOLS:
++        count, number = divmod(number, value)
++        out.append(symbol * count)
++    return "".join(out)

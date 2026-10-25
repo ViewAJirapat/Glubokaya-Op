@@ -8,10 +8,12 @@ worktree on PYTHONPATH, so the agent can neither read nor edit them.
 from __future__ import annotations
 
 import shutil
+import time
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
+from swarm import archlint
 from swarm.config import Target
 from swarm.sandbox import CHECK, FIX, HOST, Box, Mounts
 from swarm.task import Task
@@ -35,6 +37,9 @@ class StageResult:
         )
 
 
+ARCHITECTURE = "architecture rules"
+
+
 def expand(cmd: list[str], python: str) -> list[str]:
     return [python if part == "{python}" else part for part in cmd]
 
@@ -47,6 +52,8 @@ def short_name(name: str) -> str:
     """'python -m ruff format --check .' -> 'ruff format'; for progress lines."""
     if name == "hidden acceptance tests":
         return "acceptance"
+    if name == ARCHITECTURE:
+        return "architecture"
     words = name.removeprefix("python -m ").split()
     return " ".join(w for w in words[:2] if not w.startswith("-") and w != ".")
 
@@ -101,9 +108,24 @@ def run_autofix(wt: Path, target: Target, timeout: float, box: Box = HOST) -> li
     return _run_all(target.autofix, wt, target, timeout, box, FIX)
 
 
+def run_architecture(wt: Path, target: Target) -> StageResult | None:
+    """Static import rules. Parses files without executing them, so it runs on the host
+    even for sandboxed targets."""
+    if target.architecture is None:
+        return None
+    started = time.monotonic()
+    result = archlint.check(wt, target.architecture)
+    seconds = round(time.monotonic() - started, 2)
+    detail = "" if result.ok else f"{len(result.violations)} violation(s)"
+    out = archlint.report(result)
+    return StageResult(ARCHITECTURE, result.ok, 0 if result.ok else 1, seconds, out, False, detail)
+
+
 def run_gates(wt: Path, target: Target, timeout: float, box: Box = HOST) -> list[StageResult]:
     """Run every gate (no short-circuit) so one iteration surfaces all failures."""
-    return _run_all(target.verify, wt, target, timeout, box, CHECK)
+    stages = _run_all(target.verify, wt, target, timeout, box, CHECK)
+    arch = run_architecture(wt, target)
+    return stages + ([arch] if arch else [])
 
 
 def _junit_counts(path: Path) -> dict[str, int] | None:

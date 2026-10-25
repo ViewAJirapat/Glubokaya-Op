@@ -25,3 +25,11 @@
   extra_params:
     num_ctx: 8192
     num_predict: 4096
+
+# qwen3-coder:30b (MoE, 3B active): ~18 GB weights. On the RTX 4080 Laptop (12 GB) it runs
+# about half on the CPU (ollama ps: 49%/51% CPU/GPU at 16k) at ~20-35 tok/s; 16k costs
+# only ~1 GB more than 8k.
+- name: ollama_chat/qwen3-coder:30b
+  extra_params:
+    num_ctx: 16384
+    num_predict: 4096

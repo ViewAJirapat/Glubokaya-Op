@@ -1,0 +1,21 @@
+title = "Add a temperature conversion endpoint"
+type = "feat"
+files = ["src/shopapi/features/products/handler.py"]
+scope = ["src/shopapi/features/temperature/**"]
+prompt = """
+Add a new feature `temperature` (a new folder `src/shopapi/features/temperature/`) with the
+route `GET /temperature/{value}/{unit}` that converts between Celsius and Fahrenheit.
+
+- `unit` is `c` or `f`, case-insensitive. `c` means `value` is in Celsius and the answer is
+  in Fahrenheit; `f` is the reverse.
+- `value` is a decimal number such as `100`, `-40` or `36.6`.
+- Respond 200 with `{"value": <converted>, "unit": "<f or c>"}`: the converted value as a
+  float rounded to 1 decimal place, and the converted value's unit in lowercase.
+- Respond 400 (raise `HTTPError(400, ...)`) when `value` is not a finite number (this
+  includes `nan` and `inf`), when the unit is unknown, or when the temperature is below
+  absolute zero (-273.15 C or -459.67 F).
+
+Examples: /temperature/100/c -> {"value": 212.0, "unit": "f"};
+/temperature/-40/F -> {"value": -40.0, "unit": "c"};
+/temperature/98.6/f -> {"value": 37.0, "unit": "c"}.
+"""

@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from swarm import git, guard, sandbox, verify
+from swarm import archlint, git, guard, sandbox, verify
 from swarm.config import Config, EngineSpec, Target
 from swarm.engines import AgentContext, make_engine
 from swarm.sandbox import HOST, Box
@@ -64,7 +64,7 @@ class RunSummary:
     worktree: str | None = None  # set when the worktree is kept
     error: str | None = None
     cost_usd: float | None = None
-    reverted_total: int = 0  # protected-path edits the agent attempted
+    reverted_total: int = 0  # edits the guard reverted (protected paths, outside scope)
     pushed: bool = False
     pr_url: str | None = None
     sandbox: str = "none"
@@ -85,11 +85,19 @@ def build_prompt(task: Task, target: Target, attempt: int, feedback: str | None)
     lines = [f"# Task {task.id}: {task.title}", "", task.prompt, ""]
     if task.files:
         lines += ["Relevant files to start from: " + ", ".join(f"`{f}`" for f in task.files), ""]
+    if target.context_files:
+        shown = ", ".join(f"`{f}`" for f in target.context_files)
+        lines += [f"Read-only reference (the API to code against): {shown}", ""]
     lines += [
         "## How your work is checked",
         "When you stop, the harness (not you) runs these from the repository root. "
         "Every command must exit 0:",
         gates,
+    ]
+    if target.architecture:
+        lines.append("The harness also checks these import rules (a static check of every module):")
+        lines += [f"- {rule}" for rule in archlint.describe_rules(target.architecture)]
+    lines += [
         "Hidden acceptance tests for this task also run. You cannot see them, so implement "
         "exactly what the task describes, including the edge cases it mentions.",
     ]
@@ -103,6 +111,13 @@ def build_prompt(task: Task, target: Target, attempt: int, feedback: str | None)
         + ", ".join(f"`{p}`" for p in target.protected),
         "- Added lines matching these patterns block the change: "
         + ", ".join(f"`{p}`" for p in target.forbidden_added),
+    ]
+    if task.scope:
+        lines.append(
+            "- This task may only change these paths; edits anywhere else are reverted: "
+            + ", ".join(f"`{p}`" for p in task.scope)
+        )
+    lines += [
         "- Do not commit, push or switch branches. The harness commits after the checks pass.",
         "- Work non-interactively: edit the files directly; nobody will answer questions.",
     ]
@@ -130,8 +145,8 @@ def build_feedback(
         parts.append("You created commits; the harness turned them back into uncommitted edits.")
     if report.reverted:
         parts.append(
-            "These edits were REVERTED (protected paths). Solve the task without them:\n"
-            + "\n".join(f"- {r}" for r in report.reverted)
+            "These edits were REVERTED (protected paths, or outside this task's scope). "
+            "Solve the task without them:\n" + "\n".join(f"- {r}" for r in report.reverted)
         )
     if not report.changes:
         parts.append("No file changes remain. Edit the source files to complete the task.")
@@ -203,7 +218,7 @@ def check_baseline(
 def _commit_message(task: Task, spec: EngineSpec, s: RunSummary, rec: IterationRecord) -> str:
     gates = "\n".join(f"- {st['name']}: ok {st['detail']}".rstrip() for st in rec.stages)
     attempted = (
-        f"\nProtected-path edits reverted during the run: {s.reverted_total}\n"
+        f"\nEdits reverted during the run (protected or out of scope): {s.reverted_total}\n"
         if s.reverted_total
         else ""
     )
@@ -337,6 +352,7 @@ def run_task(
                 task,
                 settings.agent_timeout,
                 hidden=target.protected,
+                read_only=target.context_files,
                 box=box,
             )
             agent = engine.run(prompt, ctx)
@@ -347,7 +363,7 @@ def run_task(
             if target.autofix:
                 fixes = verify.run_autofix(wt, target, settings.verify_timeout, box)
                 _write_stage_log(idir / "autofix.log", fixes)
-            report = guard.enforce(wt, s.base_sha, target)
+            report = guard.enforce(wt, s.base_sha, target, task.scope)
             s.reverted_total += len(report.reverted)
             if agent.error and not report.changes:
                 # Auth failures, missing models, crashes: retrying only burns iterations.
@@ -394,7 +410,7 @@ def run_task(
                 or "no changes"
             )
             if report.reverted:
-                line += f" | reverted {len(report.reverted)} protected edit(s)"
+                line += f" | reverted {len(report.reverted)} edit(s)"
             if report.violations:
                 line += f" | {len(report.violations)} forbidden line(s)"
             say("  " + line)

@@ -72,8 +72,8 @@ Prerequisites: [Ollama](https://ollama.com) with `ollama pull qwen2.5-coder:7b`,
 ## Set up on another PC
 
 Git carries the code, docs, tasks, `uv.lock` and the Aider source snapshot. It does **not** carry
-the AI models (~23 GB), the Python venv, the `aider-local` command, the demo repo or run logs.
-Recreate those once per PC (Windows, PowerShell):
+the AI models (5-18 GB each; sizes in HANDOVER section 3), the Python venv, the `aider-local`
+command, the demo repos or run logs. Recreate those once per PC (Windows, PowerShell):
 
 1. **Install the tools:**
    - Git: `winget install Git.Git`
@@ -90,7 +90,7 @@ Recreate those once per PC (Windows, PowerShell):
    uv sync
    uv run swarm demo-init
    uv run swarm validate        # expect 4/4
-   uv run pytest -q             # expect 45 passed, 2 skipped
+   uv run pytest -q             # expect 94 passed, 3 skipped (Windows)
    ```
 4. **Aider**, the exact tested version, and the `aider-local` command:
    ```
@@ -127,8 +127,9 @@ baseline       base passes the gates? hidden tests fail? (else: invalid_task)
 loop (max_iterations):
     agent edits            (scrubbed env, timeout, no shell for Aider, file tools only for Claude)
     autofix                ruff check --fix, ruff format (like a pre-commit hook)
-    guard                  fold agent commits, revert protected paths, scan added lines
-    gates                  every verify command, no short-circuit
+    guard                  fold agent commits, revert protected paths (and paths outside the
+                           task's scope, if it has one), scan added lines
+    gates                  every verify command, no short-circuit (+ architecture rules, if set)
     hidden tests           copied from tasks/, run against the worktree
     pass -> commit explicit paths, remove worktree, keep branch
     fail -> feedback = task + rules + all failures, next attempt
@@ -149,6 +150,8 @@ in the prompt (like `pyproject.toml`) aren't auto-added to the chat.
 Set `sandbox = "docker"` on a target in `swarm.toml`, or pass `--sandbox docker` for one
 command. Every agent call (Aider, `kind = "command"`) and every check (import check, autofix,
 gates, hidden tests) then runs in a fresh container that is deleted when the command exits.
+The one exception is the architecture check, which only parses files and never runs them,
+so it stays on the host.
 
 ```bash
 uv run swarm docker-build                        # once: ~1.3 GB image, stored on E: by Docker Desktop
@@ -230,6 +233,7 @@ tasks, so a local-model failure can be read as the model's limit rather than a h
 | `swarm integrate [BRANCH...]` | merge passing branches (default: newest per task), re-verify |
 | `swarm tasks` / `swarm runs` | list tasks / recent runs |
 | `swarm clean [--branches]` | remove worktrees (and `agent/*`, `integration/*` branches, leftover sandbox containers) |
+| `swarm archlint [PATH] [--json]` | check a checkout (default: the target repo) against the target's architecture rules |
 | `swarm docker-build` | build the sandbox image from `docker/Dockerfile` |
 
 Global options go before the command: `-t TARGET`, `-c CONFIG`, `--sandbox none|docker`.
@@ -240,7 +244,7 @@ Global options go before the command: `-t TARGET`, `-c CONFIG`, `--sandbox none|
    and `forbidden_added`. Set `pythonpath` and `import_check` for a Python src layout.
 2. Put an `AGENTS.md` in the repo (rules only; the commands come from `verify`).
 3. Write tasks in `tasks/myrepo/<id>/`:
-   - `task.toml` (`title`, `prompt`, optional `type` and `files`)
+   - `task.toml` (`title`, `prompt`, optional `type`, `files` and `scope`)
    - `acceptance/test_*.py`: the hidden tests. Write these yourself; they define "done".
    - `solution.patch` (optional): the reference fix, used by `swarm validate`
 4. `uv run swarm -t myrepo validate`, then `uv run swarm -t myrepo run <id> -e local-7b`.
@@ -249,11 +253,62 @@ The gate toolchain runs from this harness's venv (`{python} -m ...`). Add any to
 repo's gates need to the `dev` group in `pyproject.toml`. In the Docker sandbox `{python}` is
 the image's `/opt/gates` venv, so add them to `docker/Dockerfile` too.
 
+## Parallel-friendly targets: auto-discovery + architecture rules
+
+Agents running in parallel conflict when every feature has to be registered in one shared
+file (`routes.py`, `__init__.py`). The `shopapi` target shows the fix, enforced in three
+layers:
+
+- **Auto-discovery.** `demo/shopapi` is a small JSON web API (standard library only). Each
+  feature is a package `src/shopapi/features/<name>/` (an `__init__.py` plus a `handler.py`
+  whose functions carry `@route(...)`). `core/registry.py` finds them at startup, so a task
+  adds a folder and touches nothing shared. Routes with fixed segments win over `{param}`
+  routes whatever the folder order; two features claiming one route stop the app. To serve
+  it from the repo root after `swarm -t shopapi demo-init` (PowerShell):
+  `$env:PYTHONPATH='work/shopapi_repo/src'; uv run python -m shopapi`. It listens on `PORT`
+  (default 8000).
+- **Task scope.** `scope = ["src/shopapi/features/temperature/**"]` in `task.toml`: the guard
+  reverts edits anywhere else, and hint `files` outside the scope reach Aider read-only. The
+  app's frame (`core/`, `app.py`, the package `__init__`/`__main__`, and same-named packages
+  that would shadow them) is also `protected`.
+- **Architecture rules** (`swarm/archlint.py`). `[targets.<name>.architecture]` in
+  `swarm.toml` adds a gate that statically checks every import:
+  - `packages = ["shopapi"]`: code in `shopapi` imports no first-party code from outside it
+    (another module under `root` or another `pythonpath` entry, or a module or package at the
+    repo root), so `src/bridge.py` can't pass imports along;
+  - `independent = ["shopapi.features.*"]`: no feature imports another;
+  - `[[...forbid]]` with `from`, `to`, optional `allow` and `fix`: here, core can't import
+    features, and features may import only the public contract `shopapi.core.api`.
+
+  The rules live in `swarm.toml`, outside the worktree, so an agent can't relax them. They're
+  listed in the agent's prompt, and every violation in the feedback carries its rule and the
+  `fix` hint. It counts import statements anywhere, attribute chains (`import a.b` then
+  `a.c.x`), and importlib calls with literal names. It reports symlinks and junctions under
+  `root` instead of following them, two files defining one module, and an empty or missing
+  `root`. The check parses files without running them, so it runs on the host even for
+  sandboxed targets; `integrate` re-runs it after merging. `swarm archlint [PATH]` runs it by
+  hand.
+
+Protected files are hidden from Aider, so `context_files` in the target lists the ones it
+should see read-only: for shopapi, the contract (`core/api.py`, `core/http.py`).
+
+```
+uv run swarm -t shopapi demo-init     # work/shopapi_repo from demo/shopapi
+uv run swarm -t shopapi validate      # 3 tasks, each adds one feature folder
+uv run swarm -t shopapi integrate     # merges all three branches: no conflicts
+```
+
+To use the same approach in your own repo: give it a registry that discovers feature
+folders, protect the registry, give each task a `scope`, and add an `architecture` block to
+its target (`root` defaults to the first `pythonpath` entry). Patterns are dotted module
+names: `*` is one segment, `**` any number (including none).
+
 ## Engines
 
 | Engine | What runs |
 |---|---|
 | `local-7b`, `local-14b`, `local-16b` | Aider + Ollama (qwen2.5-coder 7B/14B, deepseek-coder-v2 16B) |
+| `local-30b` | Aider + Ollama (qwen3-coder 30B, mixture-of-experts; about half on the CPU with 12 GB of VRAM) |
 | `local-*-arch` | the same, in Aider's architect mode (plan, then edit) |
 | `claude-sonnet`, `claude-opus` | `claude -p --restricted --tools Read,Edit,Write,Glob,Grep` |
 | `aider-sonnet` | Aider against the Anthropic API (`ANTHROPIC_API_KEY`) |
@@ -277,19 +332,24 @@ the image's `/opt/gates` venv, so add them to `docker/Dockerfile` too.
   some expected values. Use `summary` or `none` for a stricter benchmark.
 - The guard catches the common shortcuts, not a determined adversary (for example,
   monkeypatching pytest from package code). Review the diffs before merging.
+- The architecture check is static: it sees imports, attribute chains and importlib calls
+  with literal names, not module names computed at runtime or reflection tricks. It stops
+  accidental coupling and lazy shortcuts, not a determined adversary.
 - Four demo tasks are a smoke test, not a benchmark. Add tasks from your own backlog before
   drawing conclusions about a model.
 
 ## Layout
 
 ```
-swarm/            harness (cli, runner, guard, verify, engines, sandbox, dispatch, git, config)
+swarm/            harness (cli, runner, guard, verify, archlint, engines, sandbox, dispatch, git, config)
 swarm.toml        targets + engines + [sandbox]
 docker/           sandbox image (python 3.12, git, aider, pytest/ruff/mypy)
 config/           aider model settings (Ollama context sizes)
 demo/shopkit/     template for the demo target repo
+demo/shopapi/     template for the shopapi target (web API, auto-discovered features)
 tasks/demo/       4 tasks: 2 bug fixes, 1 feature, 1 multi-file feature
-tests/            harness tests (scripted agents: cheater, noop, cosmetic, crasher);
+tasks/shopapi/    3 tasks, each adding one feature folder
+tests/            harness tests (scripted agents: cheater, noop, cosmetic, crasher, messy, tangled);
                   SWARM_DOCKER_TESTS=1 adds two end-to-end runs in real containers
 local-ai/         aider-local launcher (Aider + local Ollama model) and its model settings
 third_party/      Aider.zip: unmodified Aider v0.86.2 source snapshot (see third_party/README.md)

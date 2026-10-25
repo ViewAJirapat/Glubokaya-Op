@@ -1,0 +1,21 @@
+[project]
+name = "shopapi"
+version = "0.1.0"
+description = "Demo target for the swarm harness: a JSON web API with auto-discovered features."
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.mypy]
+strict = true
+mypy_path = "src"

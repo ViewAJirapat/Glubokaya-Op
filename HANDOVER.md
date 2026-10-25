@@ -1,11 +1,12 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-10-21 · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op`, branch `main` · **Built on:** Windows 11, GTX 1080 Ti (11 GB)
+**Updated:** 2026-10-25 · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op`, branch `main` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
 - **Before changing anything:** read sections 2 and 3. Every "don't" in section 2b cost real time to discover.
 - **Workflow diagrams:** [`docs/diagrams/overview.svg`](docs/diagrams/overview.svg) (how the parts connect) and [`docs/diagrams/task-loop.svg`](docs/diagrams/task-loop.svg) (what the harness does per task).
+- **Owner's rule:** keep this file current at every checkpoint (before long jobs, after each step), because Claude usage limits can stop a session without warning.
 
 ---
 
@@ -22,9 +23,10 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 
 | Part | Status |
 |---|---|
-| `swarm` harness | ✅ Works. 45 tests pass, 2 skipped (opt-in real-Docker tests). `ruff` and `mypy --strict` are clean. `swarm validate` passes 4/4. |
+| `swarm` harness | ✅ Works. 94 tests pass, 3 skipped on Windows (2 opt-in real-Docker tests; 1 file-symlink test that needs a privilege Windows lacks). `ruff` and `mypy --strict` are clean. `swarm validate` passes 4/4 (`demo`) and 3/3 (`shopapi`). |
+| Auto-discovery + architecture rules (2026-10-25) | ✅ Works. Built from the owner's notes on parallel agents. The `shopapi` target: features are folders found at startup; each task has a `scope` (one feature folder); `[targets.shopapi.architecture]` adds an import-rule gate (`swarm/archlint.py`). Its 3 task branches merge with no conflicts. A pre-push review (6 reviewers, 3 adversarial verifiers per finding, plus a critic) confirmed 37 issues, and a second review of the fixes confirmed 12 more (including a pre-existing hole: the harness committed the git index, not what it had checked). All are fixed, with regression tests for the important ones. No local model has tried the shopapi tasks yet. |
 | Docker sandbox (opt-in) | ✅ Works. Same pass rates as without it; adds ~4 s per container start. |
-| `aider-local` | ✅ Works. Default brain is qwen2.5-coder:14b in architect mode; a small edit takes ~40 s on the original PC. |
+| `aider-local` | ✅ Works. Default brain is qwen2.5-coder:14b in architect mode. A small edit takes ~40 s on the original PC and ~21 s on the RTX 4080 Laptop. Brains: `7b`, `14b`, `16b`, `30b` (qwen3-coder). |
 | GitHub | ✅ Everything is pushed, including `third_party/Aider.zip` (Aider v0.86.2 source). |
 | Claude baseline benchmark | ❌ Never ran: the `claude` CLI wasn't signed in on the original PC. |
 
@@ -41,8 +43,18 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 | `local-16b-arch` | ❌ | ❌ | ❌ | ❌ | 0/4 | 22 min |
 
 - **Architect mode** (plan in prose, then edit, same model) helps both Qwen models by one task each.
-- **No local brain solves durations**, a small parser with many edge cases.
+- **No qwen2.5/deepseek brain solves durations**, a small parser with many edge cases.
 - **One run each on 4 tasks: a direction, not a verdict.** The raw logs stayed on the original PC (`runs/` isn't in git).
+
+**On the RTX 4080 Laptop (12 GB VRAM, 40 GB RAM), 2026-10-21/25, one run each:**
+
+| Engine | Pagination | Slugify | Durations | Discounts | Pass | Time |
+|---|---|---|---|---|---|---|
+| `local-14b-arch` (100% GPU) | ✅ | ✅ | ❌ | ✅ | 3/4 | 5m32s |
+| `local-30b-arch` (qwen3-coder:30b, MoE; ~50% CPU) | ✅ | ✅ | ✅ | ❌ | 3/4 | 5m52s |
+
+qwen3-coder:30b is the first local brain to solve durations, but it missed discounts. The two
+are tied; repeat runs (`-r 3`) would settle the default brain.
 
 ---
 
@@ -55,7 +67,7 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 - **The harness is the only judge.** Each attempt runs:
   1. agent edits;
   2. autofix (`ruff check --fix`, `ruff format`);
-  3. the guard (`swarm/guard.py`) reverts protected paths, blocks forbidden added lines (`# type: ignore`, `# noqa`, skip/xfail, `collect_ignore`), and turns agent commits back into uncommitted edits;
+  3. the guard (`swarm/guard.py`) reverts protected paths (and paths outside the task's `scope`, if set), blocks forbidden added lines (`# type: ignore`, `# noqa`, skip/xfail, `collect_ignore`), and turns agent commits back into uncommitted edits;
   4. **all** gates run, with no stopping at the first failure;
   5. hidden tests run.
 
@@ -65,14 +77,24 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 - **Retry prompt = full task + rules + all failures**, clipped to a size budget (head 30% / tail 70%, since summaries come last). Why: each agent call starts with no memory, and the blueprint's retries dropped the task.
 - **"Stuck" warning** when an attempt's diff equals the previous one. Why: small models resubmit identical wrong code.
 - **Fail fast:** an agent error (auth, crash, timeout) with no changes stops the run, instead of burning all 4 attempts.
-- **Commits come from the harness**, with explicit guard-approved paths and author `swarm-agent`.
+- **Commits come from the harness**, with explicit guard-approved paths and author `swarm-agent`. The index is reset before the guard runs and again before committing, with literal pathspecs, so the commit is exactly the working tree that was checked. Before 2026-10-25 an agent could stage a change, restore the file on disk, and have it committed unchecked.
   - Agents get an allowlisted environment; git credential helpers and remote protocols are disabled (`swarm/util.py:agent_env`).
   - Pushing happens only from the harness, after the gate, with `--push`.
 - **Rules (`AGENTS.md`) are read from the base commit**, so an agent can't rewrite its own rules.
-- **One source of truth for "done":** the `verify` list in `swarm.toml`. `AGENTS.md` doesn't duplicate it.
+- **One source of truth for "done":** the target in `swarm.toml`, meaning its `verify` list plus, if set, its `architecture` rules. `AGENTS.md` doesn't duplicate them.
 - **Worktrees live outside the target repo** (`.worktrees/<target>/<run-id>`). Passing ones are removed and the branch kept; failing ones are kept, with `runs/<run-id>/final.patch`.
 - **Import check before the agent runs.** The package must import from the worktree; an editable install of another checkout would test the wrong code.
 - **Autofix exists because** a logically correct 7B fix failed ruff over import order. Benchmark logic, not whitespace.
+
+**Parallel-friendly targets** (`swarm/archlint.py`, task `scope`, `context_files`; demo: `shopapi`):
+- **Why:** parallel agents conflict when every feature registers itself in one shared file. Auto-discovery (a feature = a folder found at startup) removes the shared file; the rest enforces it.
+- **Task `scope`** (task.toml) is enforced by the guard: edits elsewhere are reverted. Without it, a task could edit another feature (the hint `files` used to be editable) and its branch would conflict on merge. Hint files outside the scope reach Aider as `--read`.
+- **`context_files`** (target): protected files are in `--aiderignore`, so Aider never saw the public contract it must code against. They're now passed as `--read`; Aider applies `--aiderignore` only to editable files (checked in its source, `base_coder.py`).
+- **Architecture rules live in `swarm.toml`**, outside the worktree, so an agent can't relax them. The check is static (it parses files, never runs them), so it runs on the host even for sandboxed targets.
+- **`packages`** exists because, without it, a module no rule covers (`src/bridge.py`, a repo-root `helper.py`, `lib/` on the pythonpath, or `src.` as a namespace package) could pass forbidden imports along. It only judges imports made by package code, and it ignores repo-root folders without an `__init__` (an installed package of the same name, like `alembic`, wins over them), so it doesn't flag tests, conftest or tool folders.
+- **Links under `root` are reported, not followed.** `os.walk` follows Windows junctions even with `followlinks=False`, and a link could point outside the worktree.
+- **Two files defining one module** (`app.py` + `app/__init__.py`) are reported. Python loads the package, so a new `app/` folder would silently replace the protected `app.py`. shopapi also protects `app/**` and `__main__/**`.
+- **An empty or missing `root` fails the gate.** Otherwise a typo would turn the check into a silent pass.
 
 **Aider settings** (`swarm/engines.py:AiderEngine`; each one fixes a failure observed on the original PC):
 - `--chat-language English`
@@ -86,7 +108,7 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 **Claude engine:** `claude -p --restricted --tools Read,Edit,Write,Glob,Grep --permission-mode acceptEdits`. No Bash; the harness runs the checks.
 
 **Docker sandbox** (`swarm/sandbox.py`, `docker/Dockerfile`):
-- Each agent call and each gate runs in a fresh container that sees only the worktree.
+- Each agent call and each gate runs in a fresh container that sees only the worktree. The exception is the architecture check: it only parses files, so it runs on the host.
 - Gates have no network and a read-only worktree.
 - Git inside the container uses a throwaway git dir with the object store mounted read-only.
 - `git worktree add --relative-paths` was rejected: it permanently sets a repo extension that older git can't open, and needs read-write refs.
@@ -115,6 +137,8 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
    - in architect mode it created a file literally named `return slug`.
 10. **Two different models as brain and hand** (`--hand`): constant model swapping on 11 GB.
 11. **Non-ASCII characters in `.ps1` scripts.** Windows PowerShell 5.1 reads BOM-less files in the system code page (Thai on the original PC). Keep scripts ASCII.
+12. **Installing uv-managed Python or uv tools from inside the Claude desktop app.** It's a packaged (MSIX) app, so Windows redirects its child processes' writes under `AppData` to `...\Packages\Claude_*\LocalCache`. `uv tool install` then breaks ("Missing expected target directory for Python minor version link"), or installs where a normal terminal can't see it. From a Claude session, set `UV_PYTHON_INSTALL_DIR`, `UV_TOOL_DIR` and `UV_CACHE_DIR` to folders under `~\.local\share\uv` for that command; from a normal terminal, nothing special is needed. On the RTX 4080 PC, Aider lives in `~\.local\share\uv\tools`, so `uv tool upgrade` needs `UV_TOOL_DIR` set there.
+13. **Trusting `os.walk(followlinks=False)` on Windows.** It still descends into junctions, and `Path.is_symlink()` is False for them. Check `Path.is_junction()` too.
 
 ---
 
@@ -128,7 +152,7 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 - **Pinned and tested versions:**
   - Python ≥ 3.12 via uv (`uv.lock`)
   - Aider **0.86.2** on Python 3.12, as a uv tool
-  - Ollama 0.40.6
+  - Ollama 0.40.6 on the original PC. The desktop app auto-updates; the RTX 4080 PC has 0.40.10.
   - Docker Desktop 29.x (optional)
 
 **GPU: the defaults assume ~11 GB of VRAM.** This is a rough guide for retuning on another card; verify with `ollama ps`, aiming for ~100% GPU:
@@ -137,20 +161,20 @@ It started from the owner's blueprint (`autonomous_coding_agent_swarm_blueprint.
 |---|---|---|
 | < 8 GB | `7b` (CPU offload likely) | 8192 |
 | 8–10 GB | `7b` | 16384 |
-| 11–12 GB | `14b` (current default) | 8192 |
+| 11–12 GB | `14b` (current default; 100% GPU on the RTX 4080 Laptop) | 8192 |
 | 16 GB+ | `14b`, fully on the GPU | 16384 |
 
-The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context sizes live in **both** `local-ai/model.settings.yml` and `config/aider.model.settings.yml`.
+The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context sizes live in **both** `local-ai/model.settings.yml` and `config/aider.model.settings.yml`. Mixture-of-experts models bigger than the GPU (e.g. `30b`, 18 GB) still run, split between GPU and RAM, at ~20-35 tok/s on the RTX 4080 Laptop.
 
 **Not in git: recreate on each PC:**
 
 | Item | How to recreate |
 |---|---|
-| Ollama models (~23 GB for all three) | `ollama pull <tag>`, or copy the model folder from the old PC |
+| Ollama models (14b 9 GB, 7b 4.7 GB, 30b 18 GB, 16b 8.9 GB) | `ollama pull <tag>`, or copy the model folder from the old PC. On the RTX 4080 PC they're in `models\` in the repo (git-ignored; `OLLAMA_MODELS` points there). |
 | `.venv` | `uv sync` |
 | `aider-local` command | `powershell -ExecutionPolicy Bypass -File local-ai\install.ps1` |
-| Aider itself | `uv tool install --python 3.12 aider-chat==0.86.2` |
-| `work/demo_repo` | `uv run swarm demo-init` |
+| Aider itself | `uv tool install --python 3.12 aider-chat==0.86.2` (from a Claude session, see 2b #12) |
+| `work/demo_repo`, `work/shopapi_repo` | `uv run swarm demo-init`, `uv run swarm -t shopapi demo-init` |
 | `runs/`, `.worktrees/` | generated by runs; old logs stay on the old PC |
 | Docker image `swarm-sandbox:latest` | `uv run swarm docker-build` (~1.3 GB, only for the sandbox) |
 | Claude CLI login | run `claude` once and sign in (only for Claude engines) |
@@ -163,8 +187,11 @@ The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context 
 - Don't commit or push unless asked.
 - Back decisions with evidence (the benchmark exists for this).
 - The owner uses more than one PC: **`git pull` before starting, `git push` when done.**
+- Keep this file current at every checkpoint (before long jobs, after each step): usage limits stop sessions without warning.
 
 **Never edit** `tests/`, task `acceptance/` folders or `solution.patch` to make a benchmark pass. That would destroy the point of the comparison.
+
+**Architecture rules stay in `swarm.toml`**, outside the worktree, so an agent can't relax them (see 2a, "Parallel-friendly targets").
 
 ---
 
@@ -178,8 +205,8 @@ The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context 
 - `autonomous_coding_agent_swarm_blueprint.md`: the owner's original blueprint. Leave it as is.
 
 **Config:**
-- `swarm.toml`: targets (gates, autofix, protected paths, forbidden regexes, sandbox) and engines:
-  - `local-7b`, `local-14b`, `local-16b`, each with an `-arch` variant
+- `swarm.toml`: targets (gates, autofix, protected paths, forbidden regexes, sandbox, optional `architecture` import rules and `context_files`) and engines:
+  - `local-7b`, `local-14b`, `local-16b`, `local-30b`, each with an `-arch` variant
   - `claude-sonnet`, `claude-opus`, `aider-sonnet`
   - `oracle`
 - `config/aider.model.settings.yml`: harness model options (`num_ctx`, `num_predict` 4096).
@@ -190,6 +217,7 @@ The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context 
 - `runner.py`: the per-task loop.
 - `guard.py`: tamper checks.
 - `verify.py`: gates, autofix, hidden tests, import check.
+- `archlint.py`: the architecture gate (`packages`, `independent`, `forbid` rules with `fix` hints; also `swarm archlint [PATH] [--json]`).
 - `engines.py`: Aider, Claude, command and oracle adapters.
 - `dispatch.py`: parallel runs, bench, integrate, clean, demo-init.
 - `sandbox.py`: Docker command construction.
@@ -197,36 +225,41 @@ The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context 
 
 **Demo and tests:**
 - `demo/shopkit/`: template for the demo target repo.
+- `demo/shopapi/`: template for the `shopapi` target, a stdlib JSON web API with auto-discovered feature folders. To serve it from the repo root: `$env:PYTHONPATH='work/shopapi_repo/src'; uv run python -m shopapi`.
 - `tasks/demo/demo-00{1..4}-*/`: `task.toml`, `acceptance/` (hidden tests), `solution.patch`.
-- `tests/`: harness tests. `tests/agents/` holds scripted fake agents (cheater, noop, cosmetic, crasher, messy).
+- `tasks/shopapi/api-00{1..3}-*/`: three tasks (temperature, textstats, roman), each with a `scope` of one feature folder.
+- `tests/`: harness tests. `tests/agents/` holds scripted fake agents (cheater, noop, cosmetic, crasher, messy, tangled).
 - `docker/Dockerfile`: sandbox image.
 
 **Local AI:**
-- `local-ai/aider-local.ps1`: the launcher (`$DefaultBrain = '14b'`, `$DefaultArchitect = $true`).
+- `local-ai/aider-local.ps1`: the launcher (`$DefaultBrain = '14b'`, `$DefaultArchitect = $true`; brains `7b`, `14b`, `16b`, `30b`).
 - `local-ai/model.settings.yml`: interactive model options.
 - `local-ai/install.ps1`: creates the `aider-local` shim.
 
 **Vendored:** `third_party/Aider.zip`, the Aider v0.86.2 source. Reinstalling from PyPI is easier.
 
 **Health check** (from the repo root; expected results on a correctly set-up PC):
-- `uv run pytest -q` → 45 passed, 2 skipped
+- `uv run pytest -q` → 94 passed, 3 skipped (Windows)
 - `uv run ruff check .` and `uv run mypy` → clean
 - `uv run swarm validate` → 4/4
+- `uv run swarm -t shopapi demo-init` (once), then `uv run swarm -t shopapi validate` → 3/3
 
 ---
 
 ## 5. Open Issues
 
-1. **New hardware means new numbers.** All speeds, fits and pass rates come from the original 1080 Ti PC. Re-check the fit and re-run at least `local-14b-arch` on a new PC before trusting the default.
-2. **Thin evidence for the brain choice:** one run per engine, 4 tasks. `uv run swarm bench -e local-14b-arch -r 3` (~35 min on the original PC) would show whether 3/4 is stable. Tasks from the owner's real projects would be better still (`README.md` → "Adding your own repo").
+1. **New hardware means new numbers.** Done for the RTX 4080 Laptop (section 1). On any other PC, re-check the fit and re-run at least `local-14b-arch` before trusting the default.
+2. **Thin evidence for the brain choice:** one run per engine, 4 tasks, and `local-14b-arch` and `local-30b-arch` are tied 3/4 with different misses. `uv run swarm bench -e local-14b-arch -r 3` and the same for `local-30b-arch` (~20 min each here) would settle it. `local-30b` (non-architect) is untested. Tasks from the owner's real projects would be better still (`README.md` → "Adding your own repo").
 3. **No Claude ceiling yet.** Once the `claude` CLI is signed in, `uv run swarm bench -e claude-sonnet` shows what a strong model scores on the same tasks.
-4. **Docker sandbox limits:** ~4 s startup per container (over half the sandboxed bench time); the agent container has network access; symlinks made by the agent aren't flagged by the guard. Possible fixes: batch the gates into one container; make the guard reject symlinks.
+4. **Docker sandbox limits:** ~4 s startup per container (over half the sandboxed bench time); the agent container has network access; symlinks made by the agent aren't flagged by the guard (the architecture check reports links only under its `root`). Possible fixes: batch the gates into one container; make the guard reject symlinks.
 5. **`aider-local` is Windows-only.** The equivalent on Linux or macOS, from the repo root:
 
    ```
    OLLAMA_API_BASE=http://127.0.0.1:11434 aider --model ollama_chat/qwen2.5-coder:14b --model-settings-file local-ai/model.settings.yml --architect --chat-language English --no-analytics
    ```
-6. **The Ollama desktop app may not start its server** (it didn't on the original PC). `aider-local` handles it. An autostart at login would need the owner's OK.
+6. **The Ollama desktop app may not start its server** (it didn't on the original PC, nor right after install on the RTX 4080 PC). `aider-local` handles it. An autostart at login would need the owner's OK.
+7. **No local model has tried the shopapi tasks.** `uv run swarm -t shopapi bench -e local-14b-arch` (and `local-30b-arch`) would show whether small models can follow the folder, scope and import rules.
+8. **The architecture check is static.** It sees imports, attribute chains and importlib calls with literal names, not names computed at runtime or reflection. Good against accidental coupling, not a determined adversary.
 
 ---
 
@@ -264,6 +297,7 @@ The default is changed in `local-ai/aider-local.ps1` (`$DefaultBrain`). Context 
 5. **Don't redo:**
    - The Aider tuning in 2a/2b.
    - Re-evaluating DeepSeek-Coder-V2 16B.
+   - The RTX 4080 Laptop setup and tuning (done 2026-10-21/25; see section 1).
 
    To try a new brain:
    1. Ask before pulling, and give the size.

@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from swarm.config import EngineSpec
+from swarm.guard import in_scope
 from swarm.sandbox import AGENT, HOST, Box, Mounts
 from swarm.task import Task
 from swarm.util import CmdResult, agent_env, clip, run_cmd
@@ -32,6 +33,7 @@ class AgentContext:
     # would be reverted anyway; hiding them stops a small model from spending its attempt
     # writing tests or config. Failing visible tests still reach it through the feedback.
     hidden: list[str] = field(default_factory=list)
+    read_only: list[str] = field(default_factory=list)  # target.context_files
     box: Box = HOST  # where sandboxed engines run
 
 
@@ -149,9 +151,13 @@ class AiderEngine(Engine):
         if self.spec.model_settings:
             cmd += ["--model-settings-file", io.input(self.spec.model_settings)]
         cmd += self.spec.extra_args
+        # --read files are shown even when --aiderignore hides them; --file ones are editable.
+        for f in ctx.read_only:
+            if (ctx.worktree / f).is_file():
+                cmd += ["--read", f]
         for f in ctx.task.files:
             if (ctx.worktree / f).is_file():
-                cmd += ["--file", f]
+                cmd += ["--file" if in_scope(f, ctx.task.scope) else "--read", f]
         res = box.run(
             cmd,
             ctx.worktree,

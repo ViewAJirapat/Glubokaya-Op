@@ -6,6 +6,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+# Paths from the agent's worktree may contain [ ] * ?; never let git read them as globs.
+LITERAL = "--literal-pathspecs"
 FALLBACK_IDENTITY = ["-c", "user.name=swarm-agent", "-c", "user.email=swarm-agent@localhost"]
 AGENT_AUTHOR = "swarm-agent <swarm-agent@localhost>"
 
@@ -94,7 +96,7 @@ def changes(wt: Path, base_sha: str) -> list[Change]:
     untracked = [p for p in untracked if p]
     if untracked:
         # Intent-to-add makes new files visible to `git diff <base>`.
-        git(wt, "add", "--intent-to-add", "--", *untracked)
+        git(wt, LITERAL, "add", "--intent-to-add", "--", *untracked)
     out = git(wt, "diff", "--name-status", "--no-renames", "-z", base_sha)
     parts = [p for p in out.split("\0") if p]
     return [Change(parts[i][0], parts[i + 1]) for i in range(0, len(parts) - 1, 2)]
@@ -116,9 +118,9 @@ def added_lines(wt: Path, base_sha: str) -> dict[str, list[str]]:
 
 def revert(wt: Path, base_sha: str, change: Change) -> None:
     if ok(wt, "cat-file", "-e", f"{base_sha}:{change.path}"):
-        git(wt, "checkout", base_sha, "--", change.path)
+        git(wt, LITERAL, "checkout", base_sha, "--", change.path)
     else:
-        git(wt, "rm", "-f", "-q", "--cached", "--ignore-unmatch", "--", change.path)
+        git(wt, LITERAL, "rm", "-f", "-q", "--cached", "--ignore-unmatch", "--", change.path)
         (wt / change.path).unlink(missing_ok=True)
 
 
@@ -135,8 +137,16 @@ def fold_commits(wt: Path, base_sha: str) -> bool:
     return True
 
 
+def reset_index(wt: Path) -> None:
+    """Make the index match HEAD. The guard and the gates judge the working tree; anything
+    staged differently (git add, then restore the file) would otherwise be committed unseen."""
+    git(wt, "reset", "-q")
+
+
 def commit(wt: Path, repo: Path, paths: list[str], message: str) -> str:
-    git(wt, "add", "-A", "--", *paths)
+    """Commit exactly `paths` as they are in the working tree, nothing else from the index."""
+    reset_index(wt)
+    git(wt, LITERAL, "add", "-A", "--", *paths)
     git(wt, *identity_args(repo), "commit", "-q", "--author", AGENT_AUTHOR, "-m", message)
     return rev_parse(wt, "HEAD")
 

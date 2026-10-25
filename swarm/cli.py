@@ -5,6 +5,7 @@ swarm validate                every task: base green, hidden tests red, referenc
 swarm run TASK [TASK...]      run tasks through an engine, one worktree each
 swarm bench                   run all tasks, print a pass-rate table, save JSON
 swarm integrate               merge passing agent branches and re-run every gate
+swarm archlint [PATH]         check a checkout against the target's architecture rules
 swarm docker-build            build the image for targets with sandbox = "docker"
 swarm runs | tasks | clean
 """
@@ -17,8 +18,8 @@ import sys
 import threading
 from pathlib import Path
 
+from swarm import archlint, dispatch, sandbox
 from swarm import config as config_mod
-from swarm import dispatch, sandbox
 from swarm.config import SANDBOX_KINDS, Config, EngineSpec
 from swarm.engines import EngineError
 from swarm.runner import PASSED
@@ -89,6 +90,10 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("clean", help="remove worktrees (and optionally agent branches)")
     p.add_argument("--branches", action="store_true", help="also delete agent/* integration/*")
 
+    p = sub.add_parser("archlint", help="check import rules ([targets.*.architecture])")
+    p.add_argument("path", nargs="?", help="checkout to check (default: the target repo)")
+    p.add_argument("--json", action="store_true", help="machine-readable output")
+
     sub.add_parser("docker-build", help="build the sandbox image (docker/Dockerfile)")
     sub.add_parser("tasks", help="list tasks")
     p = sub.add_parser("runs", help="list recent runs")
@@ -139,6 +144,16 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if dispatch.integrate(cfg, target, args.branches, log) else 1
             case "clean":
                 dispatch.clean(cfg, target, args.branches, log)
+            case "archlint":
+                if target.architecture is None:
+                    raise config_mod.ConfigError(f"target {target.name} has no architecture rules")
+                where = Path(args.path).resolve() if args.path else target.repo
+                if not where.is_dir():
+                    raise config_mod.ConfigError(f"not a directory: {where}")
+                result = archlint.check(where, target.architecture)
+                render = archlint.report_json if args.json else archlint.report
+                log(render(result))
+                return 0 if result.ok else 1
             case "docker-build":
                 return 0 if sandbox.build_image(cfg.sandbox, log) else 1
             case "tasks":

@@ -1,0 +1,32 @@
+diff --git a/src/shopapi/features/textstats/__init__.py b/src/shopapi/features/textstats/__init__.py
+new file mode 100644
+index 0000000..6d70080
+--- /dev/null
++++ b/src/shopapi/features/textstats/__init__.py
+@@ -0,0 +1 @@
++"""Character, word and line counts for a text."""
+diff --git a/src/shopapi/features/textstats/handler.py b/src/shopapi/features/textstats/handler.py
+new file mode 100644
+index 0000000..c56372b
+--- /dev/null
++++ b/src/shopapi/features/textstats/handler.py
+@@ -0,0 +1,19 @@
++from shopapi.core.api import HTTPError, Request, Response, route
++
++
++@route("POST", "/text/stats")
++def text_stats(request: Request) -> Response:
++    body = request.body
++    if not isinstance(body, dict) or not isinstance(body.get("text"), str):
++        raise HTTPError(400, 'body must be a JSON object with a string "text"')
++    text: str = body["text"]
++    words = text.split()
++    return Response(
++        200,
++        {
++            "chars": len(text),
++            "words": len(words),
++            "lines": len(text.splitlines()),
++            "longest": max(words, key=len) if words else "",
++        },
++    )

@@ -1,0 +1,19 @@
+title = "Add a text statistics endpoint"
+type = "feat"
+files = ["src/shopapi/features/products/handler.py"]
+scope = ["src/shopapi/features/textstats/**"]
+prompt = """
+Add a new feature `textstats` (a new folder `src/shopapi/features/textstats/`) with the
+route `POST /text/stats`.
+
+- The request body must be a JSON object with a string field `text`. Respond 400 (raise
+  `HTTPError(400, ...)`) for anything else: no body, a body that is not an object, a missing
+  `text`, or a `text` that is not a string.
+- Respond 200 with `{"chars": ..., "words": ..., "lines": ..., "longest": ...}`:
+  - `chars`: the number of characters in `text`;
+  - `words`: the number of whitespace-separated words;
+  - `lines`: the number of lines as `str.splitlines()` counts them (0 for an empty text);
+  - `longest`: the longest word; on a tie, the first one; `""` when there are no words.
+
+Example: {"text": "a\\nbb ccc\\n"} -> {"chars": 9, "words": 3, "lines": 2, "longest": "ccc"}.
+"""

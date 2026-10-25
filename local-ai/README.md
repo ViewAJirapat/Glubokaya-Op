@@ -47,6 +47,10 @@ Aider commits each change it makes, so `/undo` or `git revert` is always availab
   (many files in the chat).
 - **`16b`** is fast but ignores instructions (it added a third-party package when told "standard
   library only"). Not recommended.
+- **`30b`** (qwen3-coder:30b, 18 GB, added on the RTX 4080 Laptop with 12 GB of VRAM): a
+  mixture-of-experts model, about half on the CPU there, ~20-35 tokens/s, 16k context. One
+  architect-mode benchmark run: 3/4, the first local brain to solve the durations task, but it
+  missed discounts. That ties the `14b` (3/4 on the same PC), so it isn't the default yet.
 
 The benchmark is 4 small Python tasks, one run each (details in the main `README.md` → Results).
 The default is set by `$DefaultBrain` and `$DefaultArchitect` near the top of `aider-local.ps1`,

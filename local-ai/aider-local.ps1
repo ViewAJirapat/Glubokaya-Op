@@ -19,6 +19,7 @@ $Brains = [ordered]@{
     '7b'  = 'qwen2.5-coder:7b'       # 4.7 GB, 100% GPU, fastest
     '14b' = 'qwen2.5-coder:14b'      # 9.0 GB, tight on 11 GB
     '16b' = 'deepseek-coder-v2:16b'  # 8.9 GB mixture-of-experts, fast for its size
+    '30b' = 'qwen3-coder:30b'        # 18 GB mixture-of-experts, about half on the CPU at 12 GB
 }
 $DefaultBrain = '14b'
 $DefaultArchitect = $true   # plan, then edit: +1 task for both Qwen models in the benchmark

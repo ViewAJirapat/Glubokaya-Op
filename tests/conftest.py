@@ -39,3 +39,27 @@ def cfg(tmp_path: Path) -> Config:
     assert t.template is not None
     dispatch.demo_init(cfg, t, t.template, force=False, log=quiet)
     return cfg
+
+
+@pytest.fixture
+def api_cfg(tmp_path: Path) -> Config:
+    """Like `cfg`, for the shopapi target (auto-discovered features + architecture rules)."""
+    with (ROOT / "swarm.toml").open("rb") as fh:
+        data: dict[str, Any] = tomllib.load(fh)
+    data["defaults"]["target"] = "shopapi"
+    data["defaults"]["worktrees_dir"] = str(tmp_path / "worktrees")
+    data["defaults"]["runs_dir"] = str(tmp_path / "runs")
+    target = data["targets"]["shopapi"]
+    target["repo"] = str(tmp_path / "repo")
+    target["template"] = str(ROOT / "demo" / "shopapi")
+    target["tasks"] = str(ROOT / "tasks" / "shopapi")
+    target["sandbox"] = "none"
+    for name in ("tangled", "stager"):
+        script = str(AGENTS / f"{name}.py")
+        data["engines"][name] = {"kind": "command", "cmd": [sys.executable, script]}
+
+    cfg = config.from_dict(data, ROOT)
+    t = cfg.target(None)
+    assert t.template is not None
+    dispatch.demo_init(cfg, t, t.template, force=False, log=quiet)
+    return cfg

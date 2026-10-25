@@ -19,3 +19,8 @@
   extra_params:
     num_ctx: 8192
     num_predict: 8192
+
+- name: ollama_chat/qwen3-coder:30b
+  extra_params:
+    num_ctx: 16384
+    num_predict: 8192

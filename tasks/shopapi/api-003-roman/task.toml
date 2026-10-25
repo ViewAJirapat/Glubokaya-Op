@@ -1,0 +1,16 @@
+title = "Add a Roman numeral endpoint"
+type = "feat"
+files = ["src/shopapi/features/products/handler.py"]
+scope = ["src/shopapi/features/roman/**"]
+prompt = """
+Add a new feature `roman` (a new folder `src/shopapi/features/roman/`) with the route
+`GET /roman/{number}` that writes a whole number in Roman numerals.
+
+- `number` must be ASCII digits only (no sign, no decimal point) and between 1 and 3999.
+  Leading zeros are fine ("007" is 7). Respond 400 (raise `HTTPError(400, ...)`) otherwise.
+- Respond 200 with `{"number": <int>, "roman": "<numeral>"}`, using standard subtractive
+  notation (4 is IV, 9 is IX, 40 is XL, 90 is XC, 400 is CD, 900 is CM).
+
+Examples: /roman/14 -> {"number": 14, "roman": "XIV"};
+/roman/1994 -> {"number": 1994, "roman": "MCMXCIV"}.
+"""

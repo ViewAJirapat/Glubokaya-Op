@@ -1,0 +1,36 @@
+diff --git a/src/shopapi/features/temperature/__init__.py b/src/shopapi/features/temperature/__init__.py
+new file mode 100644
+index 0000000..1ae9ebd
+--- /dev/null
++++ b/src/shopapi/features/temperature/__init__.py
+@@ -0,0 +1 @@
++"""Celsius and Fahrenheit conversion."""
+diff --git a/src/shopapi/features/temperature/handler.py b/src/shopapi/features/temperature/handler.py
+new file mode 100644
+index 0000000..ba271e2
+--- /dev/null
++++ b/src/shopapi/features/temperature/handler.py
+@@ -0,0 +1,23 @@
++import math
++
++from shopapi.core.api import HTTPError, Request, Response, route
++
++ABSOLUTE_ZERO = {"c": -273.15, "f": -459.67}
++
++
++@route("GET", "/temperature/{value}/{unit}")
++def convert(request: Request) -> Response:
++    unit = request.params["unit"].lower()
++    if unit not in ABSOLUTE_ZERO:
++        raise HTTPError(400, f"unknown unit {request.params['unit']!r}; use c or f")
++    try:
++        value = float(request.params["value"])
++    except ValueError:
++        raise HTTPError(400, f"not a number: {request.params['value']!r}") from None
++    if not math.isfinite(value):
++        raise HTTPError(400, "value must be a finite number")
++    if value < ABSOLUTE_ZERO[unit]:
++        raise HTTPError(400, "below absolute zero")
++    if unit == "c":
++        return Response(200, {"value": round(value * 9 / 5 + 32, 1), "unit": "f"})
++    return Response(200, {"value": round((value - 32) * 5 / 9, 1), "unit": "c"})

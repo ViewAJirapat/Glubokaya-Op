@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from swarm.archlint import Rules, rules_from_dict
+
 ACCEPTANCE_FEEDBACK_MODES = ("full", "summary", "none")
 ENGINE_KINDS = ("aider", "claude", "command", "oracle")
 SANDBOX_KINDS = ("none", "docker")
@@ -37,6 +39,10 @@ class Target:
     template: Path | None = None  # source tree for `swarm demo-init`
     autofix: list[list[str]] = field(default_factory=list)  # run after each agent edit
     sandbox: str = "none"  # "docker": agent and gates run in a container (swarm/sandbox.py)
+    architecture: Rules | None = None  # import rules checked as a gate (swarm/archlint.py)
+    # Files every agent call gets as read-only context (Aider --read). Useful when protected
+    # files, which Aider otherwise never sees, are the API the agent must code against.
+    context_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -110,6 +116,17 @@ def _target(name: str, raw: dict[str, Any], root: Path) -> Target:
     sandbox = raw.get("sandbox", "none")
     if sandbox not in SANDBOX_KINDS:
         raise ConfigError(f"targets.{name}: sandbox must be one of {SANDBOX_KINDS}: {sandbox!r}")
+    pythonpath = list(raw.get("pythonpath", []))
+    architecture = None
+    if "architecture" in raw:
+        try:
+            default_root = pythonpath[0] if pythonpath else "."
+            architecture = rules_from_dict(
+                raw["architecture"], default_root, f"targets.{name}.architecture"
+            )
+            architecture.paths = [p for p in pythonpath if p != architecture.root]
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from None
     return Target(
         name=name,
         repo=_path(root, raw["repo"]),
@@ -119,11 +136,13 @@ def _target(name: str, raw: dict[str, Any], root: Path) -> Target:
         protected=list(raw.get("protected", [])),
         forbidden_added=list(raw.get("forbidden_added", [])),
         rules_file=raw.get("rules_file"),
-        pythonpath=list(raw.get("pythonpath", [])),
+        pythonpath=pythonpath,
         import_check=raw.get("import_check"),
         template=_path(root, raw["template"]) if raw.get("template") else None,
         autofix=[list(map(str, cmd)) for cmd in raw.get("autofix", [])],
         sandbox=sandbox,
+        architecture=architecture,
+        context_files=[str(f) for f in raw.get("context_files", [])],
     )
 
 
