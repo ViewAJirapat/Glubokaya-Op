@@ -4,6 +4,7 @@
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
+- **How we got here:** [`DEVELOPMENT.md`](DEVELOPMENT.md) tells the repo's history step by step, with commits, plus the development routine.
 - **Before changing anything:** read sections 2 and 3. Every "don't" in section 2b cost real time to discover.
 - **Workflow diagrams:** [`docs/diagrams/overview.svg`](docs/diagrams/overview.svg) (how the parts connect), [`docs/diagrams/task-loop.svg`](docs/diagrams/task-loop.svg) (what the harness does per task) and [`docs/diagrams/parallel.svg`](docs/diagrams/parallel.svg) (parallel tasks merged without conflicts).
 - **Owner's rule:** keep this file current at every checkpoint (before long jobs, after each step), because Claude usage limits can stop a session without warning.

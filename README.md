@@ -6,7 +6,8 @@ work is done: tamper checks, then the repo's gates, then hidden acceptance tests
 can't see. It commits only when everything passes.
 
 This is the corrected v0 of [`autonomous_coding_agent_swarm_blueprint.md`](autonomous_coding_agent_swarm_blueprint.md).
-Continuing on another PC? Start with [`HANDOVER.md`](HANDOVER.md).
+Continuing on another PC? Start with [`HANDOVER.md`](HANDOVER.md). How the repo was built, step
+by step, and how to keep developing it: [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ## Workflow
 
@@ -359,6 +360,7 @@ tests/            harness tests (scripted agents: cheater, noop, cosmetic, crash
 local-ai/         aider-local launcher (Aider + local Ollama model) and its model settings
 third_party/      Aider.zip: unmodified Aider v0.86.2 source snapshot (see third_party/README.md)
 HANDOVER.md       developer handover: status, decisions, failed approaches, new-PC steps
+DEVELOPMENT.md    how the repo was built, step by step, and the steps to develop it
 docs/diagrams/    workflow diagrams (overview.svg, task-loop.svg, parallel.svg)
 work/ .worktrees/ runs/ models/   generated or downloaded, git-ignored
 ```
