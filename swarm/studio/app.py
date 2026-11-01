@@ -2,7 +2,7 @@
 
 Window, in order of preference (--window auto):
 - webview: a native window (pywebview on the Edge WebView2 runtime built into Windows 11);
-  optional, pip-installable into the venv (about 1.2 MB with its dependencies);
+  install with `uv sync --extra desktop` (about 1.2 MB with its dependencies);
 - edge: Microsoft Edge in app mode (its own window, no address bar; nothing to install);
 - browser: the default browser;
 - none: only print the URL.

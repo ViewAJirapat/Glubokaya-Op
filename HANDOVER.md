@@ -53,8 +53,16 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
 - **Next:**
   1. The end-to-end run with the real worker (`local-14b-arch`, about 10-30 min of GPU).
      Ask the owner first.
-  2. Install pywebview (about 1.2 MB) once the owner agrees. Edge app mode works without it.
-  3. Update README and DEVELOPMENT when the branch is done.
+  2. Open the native window once to check it (pywebview is installed; see below).
+  3. Update DEVELOPMENT when the branch is done.
+- **pywebview:** installed 2026-11-01, with the owner's OK, as the optional `desktop` extra
+  (`uv sync --extra desktop`). It went into the studio worktree's venv only:
+  - packages: pywebview 6.2.1, pythonnet, clr_loader, cffi, pycparser, bottle and
+    proxy_tools;
+  - the uv cache for it is `work/.uv-cache` on E: (21 MB). That includes build-only tools
+    (setuptools, hatchling) for building `proxy_tools` and the local project from source.
+  - `uv.lock` also lists macOS and OpenBSD-only entries (pyobjc, qtpy). They are never
+    installed on Windows.
 
 ---
 

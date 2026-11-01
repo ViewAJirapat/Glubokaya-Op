@@ -271,8 +271,8 @@ all in the window. Design and decisions: [`docs/studio.md`](docs/studio.md).
   - `app/`: the app's repo;
   - `tasks/`: the hidden tests, outside the repo;
   - `runs/`, `logs/`, `state.json`.
-- **The window:** pywebview, if it is installed in the venv (about 1.2 MB with its
-  dependencies; it uses the WebView2 runtime built into Windows 11). Otherwise Edge in app
+- **The window:** pywebview, installed with `uv sync --extra desktop` (about 1.2 MB with its
+  dependencies; it uses the WebView2 runtime built into Windows 11). Without it, Edge in app
   mode, else the default browser.
 - **No GPU:** `--plan-file tests/studio/todo_plan.json` uses a saved plan instead of the chief.
 - **Settings:** `[studio]` in `swarm.toml`. The chief uses the worker's model and context
