@@ -40,21 +40,29 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
   - the Ollama chief (`chief.py`);
   - the project and the build loop with review (`project.py`);
   - the server, the UI, the preview and `swarm studio`;
-  - 19 tests in `tests/test_studio.py`, using a scripted planner and worker.
+  - the worker engine `studio-14b`: `local-14b-arch` without the repo map;
+  - 27 tests: `tests/test_studio.py` (scripted planner and worker) and
+    `tests/test_studio_chief.py` (scripted model).
 - **Verified:**
-  - **Harness checks:** `pytest` 112 passed, 3 skipped (counted before the server test was
-    added); `ruff` and `mypy --strict` are clean.
+  - **Harness checks:** `pytest` 121 passed, 3 skipped (the usual Windows skips); `ruff` and
+    `mypy --strict` are clean.
   - **In the browser, with the scripted planner and worker:**
     - chat, the plan artifact, then approve;
     - 3 tasks passed review;
     - the preview runs the merged todo app (add, tick, counts);
     - the diff, attempts and prompt viewers work.
+  - **The failure path, with the `noop` worker:**
+    - the task fails after 4 attempts and the build pauses;
+    - Retry and Skip appear in the chat and in the task view.
+  - **pywebview:** a hidden WebView2 window loaded the studio and ran its JavaScript.
   - **Real chief:** the 14B planned the todo app in about 2-3 min, with 0 problems.
 - **Next:**
   1. The end-to-end run with the real worker (`studio-14b`, about 10-30 min of GPU).
-     Ask the owner first.
-  2. Open the native window once to check it (pywebview is installed; see below).
-  3. Update DEVELOPMENT when the branch is done.
+     - Waits for the owner's OK, and for the GPU: the ChatBook P2 wave has it from about
+       20:45 for an hour.
+     - No Ollama calls until then, not even short ones.
+  2. Open the native window once on screen, at the end of that run.
+  3. Merge or push only when the owner asks.
 - **pywebview:** installed 2026-11-01, with the owner's OK, as the optional `desktop` extra
   (`uv sync --extra desktop`). It went into the studio worktree's venv only:
   - packages: pywebview 6.2.1, pythonnet, clr_loader, cffi, pycparser, bottle and
@@ -195,6 +203,7 @@ are tied; repeat runs (`-r 3`) would settle the default brain.
 11. **Non-ASCII characters in `.ps1` scripts.** Windows PowerShell 5.1 reads BOM-less files in the system code page (Thai on the original PC). Keep scripts ASCII.
 12. **Installing uv-managed Python or uv tools from inside the Claude desktop app.** It's a packaged (MSIX) app, so Windows redirects its child processes' writes under `AppData` to `...\Packages\Claude_*\LocalCache`. `uv tool install` then breaks ("Missing expected target directory for Python minor version link"), or installs where a normal terminal can't see it. From a Claude session, set `UV_PYTHON_INSTALL_DIR`, `UV_TOOL_DIR` and `UV_CACHE_DIR` to folders under `~\.local\share\uv` for that command; from a normal terminal, nothing special is needed. On the RTX 4080 PC, Aider lives in `~\.local\share\uv\tools`, so `uv tool upgrade` needs `UV_TOOL_DIR` set there.
 13. **Trusting `os.walk(followlinks=False)` on Windows.** It still descends into junctions, and `Path.is_symlink()` is False for them. Check `Path.is_junction()` too.
+14. **Python's default HTTP server bind on Windows.** `http.server`, `socketserver` and `wsgiref` set `SO_REUSEADDR`, and on Windows that lets a second server bind a port another app already listens on. The browser then reaches either app. Seen 2026-11-01: the studio and a ChatBook server both listened on one port. The studio and the webapp frame bind with `SO_EXCLUSIVEADDRUSE` (`swarm/studio/server.py:ExclusiveServer`).
 
 ---
 
