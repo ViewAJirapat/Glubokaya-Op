@@ -97,7 +97,12 @@ def run(
         project_name, planner, harness_config=config_path, engine=engine
     )
     project.start()
-    server = StudioServer(project, port)
+    try:
+        server = StudioServer(project, port)
+    except OSError as exc:
+        project.close()
+        log(f"error: can't listen on 127.0.0.1:{port} ({exc}); pick another --port")
+        return 2
     server.start()
     log(f"Swarm Studio, project {project.name} ({project.root})")
     log(f"  studio:  {server.url}")

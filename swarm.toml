@@ -15,7 +15,7 @@ baseline_check = true        # base must be green and the hidden tests must fail
 # this harness. Projects (app repo, tasks, runs) live in projects_dir. Values shown are the
 # defaults.
 [studio]
-engine = "local-14b-arch"          # the worker
+engine = "studio-14b"              # the worker (local-14b-arch without the repo map)
 chief_model = "qwen2.5-coder:14b"  # the planner; the worker's model, so the GPU never swaps
 ollama = "http://127.0.0.1:11434"
 num_ctx = 8192                     # equal to the worker's num_ctx, or Ollama reloads the model
@@ -190,6 +190,16 @@ model = "ollama_chat/qwen2.5-coder:14b"
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024", "--architect"]
+
+# Swarm Studio's worker: local-14b-arch without the repo map. The stub's CONTRACT and the
+# frame's API files are all a feature needs, and the 8k context stays free for retries
+# (the setup that built all 30 ChatBook features).
+[engines.studio-14b]
+kind = "aider"
+model = "ollama_chat/qwen2.5-coder:14b"
+env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
+model_settings = "config/aider.model.settings.yml"
+extra_args = ["--map-tokens", "0", "--architect"]
 
 [engines.local-16b-arch]
 kind = "aider"

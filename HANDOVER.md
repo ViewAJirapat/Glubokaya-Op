@@ -51,7 +51,7 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
     - the diff, attempts and prompt viewers work.
   - **Real chief:** the 14B planned the todo app in about 2-3 min, with 0 problems.
 - **Next:**
-  1. The end-to-end run with the real worker (`local-14b-arch`, about 10-30 min of GPU).
+  1. The end-to-end run with the real worker (`studio-14b`, about 10-30 min of GPU).
      Ask the owner first.
   2. Open the native window once to check it (pywebview is installed; see below).
   3. Update DEVELOPMENT when the branch is done.

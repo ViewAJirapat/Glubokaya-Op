@@ -76,7 +76,7 @@ class Planner(Protocol):
 class StudioSettings:
     """[studio] in swarm.toml."""
 
-    engine: str = "local-14b-arch"  # the worker
+    engine: str = "studio-14b"  # the worker
     chief_model: str = "qwen2.5-coder:14b"  # the planner; the same model never swaps the GPU
     ollama: str = "http://127.0.0.1:11434"
     num_ctx: int = 8192  # equal to the worker's num_ctx, or Ollama reloads the model
@@ -576,14 +576,14 @@ class Project:
                 if t.status in ("passed", "skipped"):
                     continue
                 if t.status in ("failed", "error"):
-                    self._stop_build("paused", f"{t.id} needs you: retry or skip it.")
+                    self._stop_build("paused", f"{t.id} needs you: retry or skip it.", t.id)
                     return
                 if self._pause.is_set():
                     self._stop_build("paused", "Build paused.")
                     return
                 self._run(t)
                 if t.status != "passed":
-                    self._stop_build("paused", self._failure_note(t))
+                    self._stop_build("paused", self._failure_note(t), t.id)
                     return
         except Exception:
             self._stop_build("paused", "")
@@ -597,12 +597,12 @@ class Project:
             request = "\n".join(pending)
             self._submit("planning additions", lambda: self._draft(request, previous, request))
 
-    def _stop_build(self, status: str, note: str) -> None:
+    def _stop_build(self, status: str, note: str, task: str | None = None) -> None:
         with self._lock:
             self.state.build = status
             self._publish_state()
         if note:
-            self._say("chief", note, kind="build")
+            self._say("chief", note, kind="error" if task else "build", task=task)
 
     def _failure_note(self, t: TaskState) -> str:
         what = "did not pass" if t.status == "failed" else "hit an error"

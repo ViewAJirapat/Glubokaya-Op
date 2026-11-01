@@ -73,8 +73,8 @@ is never shared.
 ## What is reused, what is new
 
 - **Reused unchanged:** `runner.run_task`, `dispatch.integrate` and `demo_init`, `verify`
-  (gates, autofix, acceptance), `guard`, `archlint`, `engines` (`local-14b-arch`), `config`,
-  `task`.
+  (gates, autofix, acceptance), `guard`, `archlint`, `engines`, `config`, `task`. The
+  worker engine `studio-14b` is `local-14b-arch` without the repo map, as in ChatBook.
 - **Changed, backward-compatible:**
   - `run_task(..., run_id=None)`: the studio picks the id first, so it can follow
     `runs/<id>` live;

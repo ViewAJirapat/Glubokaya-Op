@@ -97,8 +97,9 @@
     build.textContent = 'build: ' + S.build;
     build.className = 'pill build ' + S.build;
     $('btn-pause').hidden = S.build !== 'running';
-    var stuck = S.tasks.some(function (t) { return t.status === 'planned'; });
-    $('btn-resume').hidden = !(S.build === 'paused' && stuck);
+    var waiting = S.tasks.some(function (t) { return t.status === 'planned'; });
+    var blocked = S.tasks.some(function (t) { return t.status === 'failed' || t.status === 'error'; });
+    $('btn-resume').hidden = !(S.build === 'paused' && waiting && !blocked);  // blocked: Retry/Skip
     setBusy(S.busy);
     var done = S.tasks.filter(function (t) { return t.status === 'passed'; }).length;
     $('tab-tasks').textContent = S.tasks.length ? 'Tasks ' + done + '/' + S.tasks.length : 'Tasks';
@@ -121,8 +122,12 @@
       ]));
     }
     if (m.task) {
+      var task = S.tasks.filter(function (t) { return t.id === m.task; })[0];
+      var stuck = task && (task.status === 'failed' || task.status === 'error') && m.kind === 'error';
       bubble.appendChild(h('div', { class: 'actions' }, [
-        h('button', { class: 'small ghost', text: 'Open ' + m.task, onclick: function () { selectTask(m.task); } })
+        h('button', { class: 'small ghost', text: 'Open ' + m.task, onclick: function () { selectTask(m.task); } }),
+        stuck ? h('button', { class: 'small', text: 'Retry', onclick: function () { post('/api/tasks/' + m.task + '/retry'); } }) : null,
+        stuck ? h('button', { class: 'small danger', text: 'Skip', onclick: function () { post('/api/tasks/' + m.task + '/skip'); } }) : null
       ]));
     }
     return h('div', { class: 'msg ' + m.role + ' ' + kind }, [

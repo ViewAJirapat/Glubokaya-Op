@@ -257,7 +257,8 @@ Global options go before the command: `-t TARGET`, `-c CONFIG`, `--sandbox none|
    - stubs with a CONTRACT docstring;
    - harness tasks;
    - **hidden acceptance tests**, made from the examples.
-5. The worker engine (`local-14b-arch`) builds one feature at a time through `run_task`.
+5. The worker engine (`studio-14b`: `local-14b-arch` without the repo map) builds one
+   feature at a time through `run_task`.
 6. Each feature that passes is reviewed with `integrate`, merged to the app's `main`, and
    shown in a **live preview**.
 

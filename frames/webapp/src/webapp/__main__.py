@@ -1,14 +1,25 @@
 """Serve the app: `python -m webapp` (HOST and PORT env vars; default 127.0.0.1:8000)."""
 
 import os
+import socket
 import socketserver
+import sys
 from wsgiref.simple_server import WSGIRequestHandler, WSGIServer, make_server
 
 from webapp.app import create_app
 
+WINDOWS = sys.platform == "win32"
+
 
 class ThreadingWSGIServer(socketserver.ThreadingMixIn, WSGIServer):
     daemon_threads = True
+    # On Windows SO_REUSEADDR lets two servers share a port; fail loudly instead.
+    allow_reuse_address = not WINDOWS
+
+    def server_bind(self) -> None:
+        if WINDOWS:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class QuietHandler(WSGIRequestHandler):

@@ -7,6 +7,7 @@ from __future__ import annotations
 import ast
 import copy
 import json
+import socket
 import sys
 import tomllib
 import urllib.error
@@ -323,3 +324,13 @@ def test_server_needs_the_token_and_its_own_host(tmp_path: Path) -> None:
     finally:
         server.stop()
         project.close()
+
+
+def test_server_refuses_a_port_another_app_listens_on(tmp_path: Path) -> None:
+    """On Windows, SO_REUSEADDR used to let the studio share a busy port with another app."""
+    project = _project(tmp_path, TODO)
+    with socket.socket() as other:
+        other.bind(("127.0.0.1", 0))
+        other.listen()
+        with pytest.raises(OSError):
+            StudioServer(project, other.getsockname()[1])

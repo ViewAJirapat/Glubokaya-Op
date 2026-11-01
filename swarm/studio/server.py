@@ -11,6 +11,7 @@ import json
 import mimetypes
 import re
 import secrets
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -18,17 +19,31 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from swarm.studio.project import Project, StudioError
+from swarm.util import IS_WINDOWS
 
 STATIC = Path(__file__).resolve().parent / "static"
 KEEPALIVE = 15.0
+
+
+class ExclusiveServer(ThreadingHTTPServer):
+    """On Windows, SO_REUSEADDR (Python's default for HTTP servers) lets a second server bind
+    a port another app already listens on, and the browser then reaches either one. Seen
+    here: the studio shared a port with another local app. Bind exclusively instead."""
+
+    daemon_threads = True
+    allow_reuse_address = not IS_WINDOWS
+
+    def server_bind(self) -> None:
+        if IS_WINDOWS:
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
 
 
 class StudioServer:
     def __init__(self, project: Project, port: int = 0) -> None:
         self.project = project
         self.token = secrets.token_urlsafe(18)
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", port), _handler(self))
-        self.httpd.daemon_threads = True
+        self.httpd = ExclusiveServer(("127.0.0.1", port), _handler(self))
         self.closing = threading.Event()
         self._thread: threading.Thread | None = None
 
