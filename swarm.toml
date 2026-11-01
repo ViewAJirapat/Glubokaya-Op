@@ -11,6 +11,18 @@ feedback_chars = 6000        # failure output fed back per attempt; keep small f
 acceptance_feedback = "full" # full | summary | none: how much hidden-test output the agent sees
 baseline_check = true        # base must be green and the hidden tests must fail on it
 
+# Swarm Studio (`swarm studio`): the chief plans in Ollama, the worker engine builds through
+# this harness. Projects (app repo, tasks, runs) live in projects_dir. Values shown are the
+# defaults.
+[studio]
+engine = "local-14b-arch"          # the worker
+chief_model = "qwen2.5-coder:14b"  # the planner; the worker's model, so the GPU never swaps
+ollama = "http://127.0.0.1:11434"
+num_ctx = 8192                     # equal to the worker's num_ctx, or Ollama reloads the model
+num_predict = 3072                 # cap per chief reply
+projects_dir = "work/studio"
+feedback_chars = 3000              # failure output per retry; small for an 8k context
+
 # ---------------------------------------------------------------------------
 # Targets
 # ---------------------------------------------------------------------------

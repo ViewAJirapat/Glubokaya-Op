@@ -35,3 +35,8 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 files = ["swarm"]
+
+# pywebview is optional (the studio's native window); without it the studio uses Edge.
+[[tool.mypy.overrides]]
+module = ["webview"]
+ignore_missing_imports = true

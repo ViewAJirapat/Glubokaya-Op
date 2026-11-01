@@ -11,6 +11,53 @@ This is for whoever continues development **on another PC**, human or AI, with n
 
 ---
 
+## 0. Work in progress: Swarm Studio (branch `studio`, 2026-11-01)
+
+A desktop app like Google Antigravity, built on the harness:
+1. you describe an app in a chat;
+2. a local chief model plans it;
+3. you approve the plan;
+4. the local worker builds it, feature by feature, through `run_task`.
+
+You watch the plan, the tasks, live logs, diffs and a live preview. Design and decisions:
+[`docs/studio.md`](docs/studio.md).
+
+- **Where:** branch `studio`, in the worktree `E:\Playground_Projects\04_AgentSwarm-studio`.
+  - It has its own `.venv`. Other projects use the main checkout and its venv, so don't run
+    `uv sync` there for this.
+  - Not pushed.
+- **Owner's decisions:**
+  - chief: local qwen2.5-coder:14b, with a strict JSON plan;
+  - form: a desktop window (pywebview, else Edge app mode);
+  - first demo: a todo list.
+- **Run it:** `uv run swarm studio [PROJECT]` (default project `todo`).
+  - `--window none|browser|edge|webview`.
+  - `--plan-file tests/studio/todo_plan.json` skips the model, to try the UI without the GPU.
+  - Projects live in `work/studio/<name>/`.
+- **Done:**
+  - the frame `frames/webapp`, with `frames/webapp.toml`;
+  - the plan, its checks and code generation (`swarm/studio/plan.py`);
+  - the Ollama chief (`chief.py`);
+  - the project and the build loop with review (`project.py`);
+  - the server, the UI, the preview and `swarm studio`;
+  - 19 tests in `tests/test_studio.py`, using a scripted planner and worker.
+- **Verified:**
+  - **Harness checks:** `pytest` 112 passed, 3 skipped (counted before the server test was
+    added); `ruff` and `mypy --strict` are clean.
+  - **In the browser, with the scripted planner and worker:**
+    - chat, the plan artifact, then approve;
+    - 3 tasks passed review;
+    - the preview runs the merged todo app (add, tick, counts);
+    - the diff, attempts and prompt viewers work.
+  - **Real chief:** the 14B planned the todo app in about 2-3 min, with 0 problems.
+- **Next:**
+  1. The end-to-end run with the real worker (`local-14b-arch`, about 10-30 min of GPU).
+     Ask the owner first.
+  2. Install pywebview (about 1.2 MB) once the owner agrees. Edge app mode works without it.
+  3. Update README and DEVELOPMENT when the branch is done.
+
+---
+
 ## 1. Objective & Status
 
 **Goal:** coding agents that run on the owner's own hardware, as a fallback for when Claude usage limits run out, plus a trustworthy way to measure how good a local model really is.

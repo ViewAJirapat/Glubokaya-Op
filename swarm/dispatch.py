@@ -94,9 +94,10 @@ def load_summaries(cfg: Config) -> list[RunSummary]:
     return out
 
 
-def integrate(cfg: Config, target: Target, branches: list[str], log: Log = print) -> bool:
+def integrate(cfg: Config, target: Target, branches: list[str], log: Log = print) -> str | None:
     """Merge passing agent branches together and re-run every gate and hidden test.
-    Separate branches never collide until merged; this is where collisions show up."""
+    Separate branches never collide until merged; this is where collisions show up.
+    Returns the integration branch if everything passed, else None."""
     existing = set(git.branches(target.repo, "agent"))
     passing = [
         s
@@ -115,7 +116,7 @@ def integrate(cfg: Config, target: Target, branches: list[str], log: Log = print
         chosen = list(latest.values())
     if not chosen:
         log("nothing to integrate: no passing agent branches")
-        return False
+        return None
     box = sandbox.make_box(cfg, target)
     box.preflight()
 
@@ -161,7 +162,7 @@ def integrate(cfg: Config, target: Target, branches: list[str], log: Log = print
             "\n".join(f"===== {st.name} ok={st.ok}\n{st.output}" for st in stages), encoding="utf-8"
         )
         log(f"integration FAILED; worktree kept at {wt}, logs in {work}")
-    return good
+    return branch if good else None
 
 
 def clean(cfg: Config, target: Target, delete_branches: bool, log: Log = print) -> None:

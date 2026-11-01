@@ -1,0 +1,105 @@
+{
+  "title": "Todo",
+  "summary": "Keep a list of things to do, tick them off, and see the counts.",
+  "features": [
+    {
+      "name": "todos",
+      "title": "Add and list todos",
+      "data": "collection \"todos\"; each item {\"id\": int, \"title\": str, \"done\": bool}",
+      "routes": [
+        {"method": "POST", "path": "/api/todos", "does": "Add a todo. A new todo is not done.",
+         "body": "{\"title\": non-empty text}",
+         "reply": "201 {\"id\": 1, \"title\": \"Buy milk\", \"done\": false}",
+         "errors": ["400 when title is missing, not text or empty"]},
+        {"method": "GET", "path": "/api/todos", "does": "List all todos, oldest first.",
+         "body": "", "reply": "200 {\"todos\": [{\"id\": 1, \"title\": \"Buy milk\", \"done\": false}]}",
+         "errors": []}
+      ],
+      "scenarios": [
+        {"name": "add two and list them", "steps": [
+          {"method": "POST", "path": "/api/todos", "body": {"title": "Buy milk"}, "status": 201,
+           "expect": {"id": 1, "title": "Buy milk", "done": false}},
+          {"method": "POST", "path": "/api/todos", "body": {"title": "Walk the dog"}, "status": 201,
+           "expect": {"id": 2, "title": "Walk the dog", "done": false}},
+          {"method": "GET", "path": "/api/todos", "body": null, "status": 200,
+           "expect": {"todos": [{"id": 1, "title": "Buy milk", "done": false},
+                                {"id": 2, "title": "Walk the dog", "done": false}]}}
+        ]},
+        {"name": "empty list", "steps": [
+          {"method": "GET", "path": "/api/todos", "body": null, "status": 200, "expect": {"todos": []}}
+        ]},
+        {"name": "title is required", "steps": [
+          {"method": "POST", "path": "/api/todos", "body": {}, "status": 400, "expect": null},
+          {"method": "POST", "path": "/api/todos", "body": {"title": "   "}, "status": 400, "expect": null},
+          {"method": "GET", "path": "/api/todos", "body": null, "status": 200, "expect": {"todos": []}}
+        ]}
+      ]
+    },
+    {
+      "name": "todo_edit",
+      "title": "Tick off and delete todos",
+      "data": "the \"todos\" collection of the todos feature",
+      "routes": [
+        {"method": "PATCH", "path": "/api/todos/{id}", "does": "Set whether the todo is done.",
+         "body": "{\"done\": true or false}",
+         "reply": "200 the whole todo, e.g. {\"id\": 1, \"title\": \"Buy milk\", \"done\": true}",
+         "errors": ["404 when the todo does not exist", "400 when done is missing or not true/false"]},
+        {"method": "DELETE", "path": "/api/todos/{id}", "does": "Delete the todo.",
+         "body": "", "reply": "200 {\"deleted\": 1}",
+         "errors": ["404 when the todo does not exist"]}
+      ],
+      "scenarios": [
+        {"name": "tick off then delete", "steps": [
+          {"method": "POST", "path": "/api/todos", "body": {"title": "Buy milk"}, "status": 201, "expect": null},
+          {"method": "PATCH", "path": "/api/todos/1", "body": {"done": true}, "status": 200,
+           "expect": {"id": 1, "title": "Buy milk", "done": true}},
+          {"method": "DELETE", "path": "/api/todos/1", "body": null, "status": 200, "expect": {"deleted": 1}},
+          {"method": "GET", "path": "/api/todos", "body": null, "status": 200, "expect": {"todos": []}}
+        ]},
+        {"name": "unknown todo", "steps": [
+          {"method": "PATCH", "path": "/api/todos/5", "body": {"done": true}, "status": 404, "expect": null},
+          {"method": "DELETE", "path": "/api/todos/5", "body": null, "status": 404, "expect": null}
+        ]},
+        {"name": "done must be a boolean", "steps": [
+          {"method": "POST", "path": "/api/todos", "body": {"title": "Read"}, "status": 201, "expect": null},
+          {"method": "PATCH", "path": "/api/todos/1", "body": {"done": "yes"}, "status": 400, "expect": null},
+          {"method": "PATCH", "path": "/api/todos/1", "body": {"done": false}, "status": 200,
+           "expect": {"id": 1, "title": "Read", "done": false}}
+        ]}
+      ]
+    },
+    {
+      "name": "todo_stats",
+      "title": "Count todos",
+      "data": "reads the \"todos\" collection",
+      "routes": [
+        {"method": "GET", "path": "/api/todo-stats", "does": "Count all, done and open todos.",
+         "body": "", "reply": "200 {\"total\": 2, \"done\": 1, \"open\": 1}", "errors": []}
+      ],
+      "scenarios": [
+        {"name": "counts follow the list", "steps": [
+          {"method": "POST", "path": "/api/todos", "body": {"title": "a"}, "status": 201, "expect": null},
+          {"method": "POST", "path": "/api/todos", "body": {"title": "b"}, "status": 201, "expect": null},
+          {"method": "PATCH", "path": "/api/todos/2", "body": {"done": true}, "status": 200, "expect": null},
+          {"method": "GET", "path": "/api/todo-stats", "body": null, "status": 200,
+           "expect": {"total": 2, "done": 1, "open": 1}}
+        ]},
+        {"name": "no todos", "steps": [
+          {"method": "GET", "path": "/api/todo-stats", "body": null, "status": 200,
+           "expect": {"total": 0, "done": 0, "open": 0}}
+        ]}
+      ]
+    }
+  ],
+  "ui": {
+    "subtitle": "Things to do, ticked off as you go.",
+    "sections": [
+      {"type": "form", "title": "Add a todo", "action": "POST /api/todos",
+       "fields": [{"name": "title", "label": "What needs doing?", "input": "text"}], "submit": "Add"},
+      {"type": "list", "title": "Todos", "source": "GET /api/todos", "items": "todos", "text": "title",
+       "toggle_field": "done", "toggle_action": "PATCH /api/todos/{id}",
+       "buttons": [{"label": "Delete", "action": "DELETE /api/todos/{id}"}]},
+      {"type": "values", "title": "Counts", "source": "GET /api/todo-stats"}
+    ]
+  }
+}

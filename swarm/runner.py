@@ -281,11 +281,12 @@ def run_task(
     push: bool = False,
     pr: bool = False,
     log: Log = print,
+    run_id: str | None = None,
 ) -> RunSummary:
     settings = cfg.settings
     engine = make_engine(spec)
     box = sandbox.make_box(cfg, target)
-    run_id = new_run_id(task, spec)
+    run_id = run_id or new_run_id(task, spec)  # a caller that watches runs/<id> picks it first
     run_dir = cfg.runs_dir / run_id
     run_dir.mkdir(parents=True)
     wt = cfg.worktrees_dir / target.name / run_id
