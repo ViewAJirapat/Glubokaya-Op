@@ -2,7 +2,7 @@
 
 Window, in order of preference (--window auto):
 - webview: a native window (pywebview on the Edge WebView2 runtime built into Windows 11);
-  install with `uv sync --extra desktop`;
+  optional, pip-installable into the venv (about 1.2 MB with its dependencies);
 - edge: Microsoft Edge in app mode (its own window, no address bar; nothing to install);
 - browser: the default browser;
 - none: only print the URL.
@@ -38,7 +38,7 @@ def _edge() -> str | None:
 
 
 def _has_webview() -> bool:
-    return importlib.util.find_spec("webview") is not None  # optional: `--extra desktop`
+    return importlib.util.find_spec("webview") is not None  # optional dependency
 
 
 def _open_webview(title: str, url: str) -> None:

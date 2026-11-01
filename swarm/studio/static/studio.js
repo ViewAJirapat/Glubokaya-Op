@@ -332,7 +332,7 @@
         var pre = $('detail-log');
         pre.textContent = '';
         text.split('\n').forEach(function (line) {
-          if (line) pre.appendChild(logLine(line, /^\[(prompt sent|>)|^>|^#{1,3} /.test(line) ? 'model' : ''));
+          if (line) pre.appendChild(logLine(line, line.indexOf('  | ') === 0 ? 'model' : ''));
         });
         pre.scrollTop = pre.scrollHeight;
       });

@@ -49,6 +49,7 @@ FRAME_TARGET = HARNESS_ROOT / "frames" / "webapp.toml"
 TARGET = "app"
 CONTRACTS = "tests/contracts.json"
 UI_FILE = "src/webapp/ui.json"
+MODEL_MARK = "  | "
 ATTEMPT_FILES = ("prompt.md", "feedback.md", "gates.log", "aider.chat.md", "diff.patch")
 
 Say = Callable[[str], None]
@@ -611,6 +612,8 @@ class Project:
         )
 
     def _log(self, tid: str, line: str, stream: str = "harness") -> None:
+        if stream == "model":
+            line = MODEL_MARK + line  # so a reloaded log still tells the model's lines apart
         path = self.root / "logs" / f"{tid}.log"
         path.parent.mkdir(parents=True, exist_ok=True)
         with path.open("a", encoding="utf-8") as fh:
