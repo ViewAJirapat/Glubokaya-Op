@@ -11,14 +11,17 @@ verify = [
   ["{python}", "-m", "mypy", "src"],
   ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"],
 ]
+# restore_contracts first: the 14B deleted the CONTRACT, or moved it below the imports, on
+# 2 of 4 attempts in the first real run, with hidden tests already passing.
 autofix = [
+  ["{python}", "tools/restore_contracts.py"],
   ["{python}", "-m", "ruff", "check", "--fix", "--exit-zero", "--quiet", "."],
   ["{python}", "-m", "ruff", "format", "--quiet", "."],
 ]
 # The frame is written by the studio, never by the worker: tests (with the CONTRACT
-# snapshots), core, the page shell, ui.json and the example feature.
+# snapshots), tools, core, the page shell, ui.json and the example feature.
 protected = [
-  "tests/**", "conftest.py", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini",
+  "tests/**", "tools/**", "conftest.py", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini",
   "pytest.ini", "mypy.ini", ".mypy.ini", "ruff.toml", ".ruff.toml", "sitecustomize.py",
   "usercustomize.py", "AGENTS.md", "CLAUDE.md", ".claude", ".git*", ".aider*",
   "src/webapp/core/**", "src/webapp/app.py", "src/webapp/app/**", "src/webapp/__init__.py",

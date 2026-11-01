@@ -334,3 +334,26 @@ def test_server_refuses_a_port_another_app_listens_on(tmp_path: Path) -> None:
         other.listen()
         with pytest.raises(OSError):
             StudioServer(project, other.getsockname()[1])
+
+
+def test_frame_updates_reach_an_existing_project(tmp_path: Path) -> None:
+    project = _project(tmp_path, TODO)
+    project.start(with_preview=False)
+    project.chat("todo list")
+    assert project.wait_idle(60)
+    project.apply_plan(planmod.plan_from_dict(project.state.plan or {}))
+    project.close()
+    app = project.app
+    # an app made by an older studio: no restore tool, an older contract test
+    git.git(app, "rm", "-q", "tools/restore_contracts.py")
+    (app / "tests" / "test_contracts.py").write_text("def test_old() -> None:\n    pass\n")
+    git.git(app, "commit", "-qam", "older frame")
+    plan_files = {p: (app / p).read_text() for p in ("src/webapp/ui.json", "tests/contracts.json")}
+
+    again = _project(tmp_path, TODO)
+    assert sorted(again.update_frame()) == ["tests/test_contracts.py", "tools/restore_contracts.py"]
+    assert git.git(app, "status", "--porcelain") == ""
+    assert "studio: frame update (2 file(s))" in git.git(app, "log", "-1", "--format=%B")
+    assert {p: (app / p).read_text() for p in plan_files} == plan_files  # the plan's own files
+    assert (app / "src/webapp/features/todos/handler.py").is_file()
+    assert again.update_frame() == []  # already current

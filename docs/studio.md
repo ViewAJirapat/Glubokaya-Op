@@ -81,7 +81,10 @@ is never shared.
   - `integrate()` returns the integration branch, or None. It used to return a bool, and
     every caller only tests truthiness.
 - **New:**
-  - `frames/webapp` + `frames/webapp.toml`: the frame and its harness target;
+  - `frames/webapp` + `frames/webapp.toml`: the frame and its harness target. Its autofix
+    starts with `tools/restore_contracts.py`, which puts a deleted or misplaced CONTRACT back
+    on top. `Project.update_frame()` brings an existing project's frame files up to date on
+    start, committed only if the frame's gates pass;
   - `swarm/studio/`:
     - `plan.py`: the plan model, checks and code generation;
     - `chief.py`: the Ollama planner and `FilePlanner`;
@@ -121,6 +124,21 @@ header naming the server, so a web page or a DNS-rebinding attack can't drive it
 uses `textContent` only. The worker runs exactly as in the harness (scrubbed environment,
 guard, optional Docker sandbox). The preview runs the generated app as your user, like the
 harness's gates do on the host.
+
+## The first real run (2026-11-02)
+
+One chat message, then the local 14B chief and worker on the GTX 1080 Ti:
+- **Plan:** about 3 min, 0 problems.
+- **01-todos:** passed on attempt 1.
+- **02-todo-edit:** failed all 4 attempts, although its hidden tests passed from attempt 1:
+  - attempt 1: an unused variable and a missing return;
+  - attempts 2 to 4: the model deleted the CONTRACT docstring, then kept restoring it
+    *below the imports*, where Python no longer sees it as the docstring.
+- **The fix:** ChatBook's rule, fix the inputs and never the model's code: the restore
+  autofix and a frame update. The retry then passed on attempt 1.
+- **03-todo-stats:** passed on attempt 1.
+
+Screenshots and timings are in [`studio-demo/`](studio-demo/README.md).
 
 ## Limits of the MVP
 

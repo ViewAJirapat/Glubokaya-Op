@@ -134,6 +134,23 @@ def _now() -> str:
     return datetime.now().strftime("%H:%M:%S")
 
 
+_CACHES = {"__pycache__", ".mypy_cache", ".ruff_cache", ".pytest_cache"}
+
+
+def _frame_owned(rel: str) -> bool:
+    """Files of frames/webapp that stay the frame's in a project; the rest is the plan's."""
+    parts = rel.split("/")
+    if _CACHES & set(parts) or parts[0].endswith(".egg-info"):
+        return False
+    if rel in (UI_FILE, CONTRACTS):
+        return False
+    if rel.startswith("src/webapp/features/"):
+        return rel == "src/webapp/features/__init__.py" or rel.startswith(
+            "src/webapp/features/health/"
+        )
+    return True
+
+
 def project_config(root: Path, harness_config: Path, settings: StudioSettings) -> Config:
     """The harness config for one project: the engines and defaults of swarm.toml, plus a
     target for the project's app repo built from frames/webapp.toml."""
@@ -194,6 +211,14 @@ class Project:
         self.root.mkdir(parents=True, exist_ok=True)
         if not self.app.exists():
             dispatch.demo_init(self.cfg, self.target, FRAME, force=False, log=lambda _m: None)
+        else:
+            updated = self.update_frame()
+            if updated:
+                self._say(
+                    "chief",
+                    "The app frame was updated from this studio version: " + ", ".join(updated),
+                    kind="build",
+                )
         if with_preview:
             self.restart_preview()
         self._worker = threading.Thread(target=self._work, name="studio-jobs", daemon=True)
@@ -211,6 +236,37 @@ class Project:
         self._pause.set()
         self._jobs.put(None)
         self.preview.stop()
+
+    def update_frame(self) -> list[str]:
+        """Bring an existing app's frame files (core, shell, tools, frame tests) up to this
+        studio's frames/webapp, so fixes to the frame reach projects started before them.
+        Planned and built features, ui.json and the CONTRACT snapshots are never touched.
+        Committed on main only if the frame's gates still pass; otherwise nothing changes."""
+        if git.git(self.app, "status", "--porcelain").strip():
+            return []
+        changed: list[str] = []
+        for src in sorted(FRAME.rglob("*")):
+            rel = src.relative_to(FRAME).as_posix()
+            if not src.is_file() or not _frame_owned(rel):
+                continue
+            dst = self.app / rel
+            data = src.read_bytes()
+            if dst.is_file() and dst.read_bytes() == data:
+                continue
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            dst.write_bytes(data)
+            changed.append(rel)
+        if not changed:
+            return []
+        red = [s for s in verify.run_gates(self.app, self.target, 300) if not s.ok]
+        if red:
+            git.git(self.app, "reset", "-q", "--hard", "HEAD")
+            git.git(self.app, "clean", "-q", "-fd")
+            return []
+        git.git(self.app, "add", "-A")
+        message = f"studio: frame update ({len(changed)} file(s))\n\n" + "\n".join(changed)
+        git.git(self.app, *git.identity_args(self.app), "commit", "-q", "-m", message)
+        return changed
 
     def _load(self) -> State:
         path = self.root / "state.json"

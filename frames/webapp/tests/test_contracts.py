@@ -15,11 +15,27 @@ CONTRACTS: dict[str, str] = json.loads(
 FIX = "fix: restore it verbatim at the top of the file, then put your code below it"
 
 
-def _problem(rel: str, expected: str, got: str | None) -> str | None:
+def _contract_lower_down(tree: ast.Module) -> bool:
+    return any(
+        isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+        and "CONTRACT" in node.value.value
+        for node in tree.body[1:]
+    )
+
+
+def _problem(rel: str, expected: str, tree: ast.Module) -> str | None:
+    got = ast.get_docstring(tree, clean=True)
     if got == expected:
         return None
     head = f"{rel}: CONTRACT docstring missing or changed ({FIX})"
-    if got is None:
+    if got is None and _contract_lower_down(tree):
+        detail = (
+            "    the CONTRACT is in the file but not first: it must be the very first "
+            "statement, above every import"
+        )
+    elif got is None:
         detail = "    the file has no module docstring"
     else:
         want, have = expected.splitlines(), got.splitlines()
@@ -44,7 +60,7 @@ def test_contract_docstrings_are_unchanged() -> None:
             tree = ast.parse(path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue  # ruff and mypy report the syntax error itself
-        problem = _problem(rel, expected, ast.get_docstring(tree, clean=True))
+        problem = _problem(rel, expected, tree)
         if problem:
             problems.append(problem)
     assert not problems, "\n".join(problems)

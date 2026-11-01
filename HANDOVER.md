@@ -41,11 +41,26 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
   - the project and the build loop with review (`project.py`);
   - the server, the UI, the preview and `swarm studio`;
   - the worker engine `studio-14b`: `local-14b-arch` without the repo map;
-  - 27 tests: `tests/test_studio.py` (scripted planner and worker) and
-    `tests/test_studio_chief.py` (scripted model).
+  - `tools/restore_contracts.py` in the frame: an autofix that puts a deleted or misplaced
+    CONTRACT back on top. `Project.update_frame()` brings existing projects' frame files up to
+    date on start; it never touches features, `ui.json` or the CONTRACT snapshots;
+  - 28 tests: `tests/test_studio.py` (scripted planner and worker) and
+    `tests/test_studio_chief.py` (scripted model). The frame has its own 19.
 - **Verified:**
-  - **Harness checks:** `pytest` 121 passed, 3 skipped (the usual Windows skips); `ruff` and
-    `mypy --strict` are clean.
+  - **Harness checks:** `pytest` passes; see the last commit message for the latest count.
+    `ruff` and `mypy --strict` are clean.
+  - **The real end-to-end run (2026-11-02, owner's OK, GPU free):** the local 14B chief and
+    worker built the todo app from one chat message.
+    - The plan took about 3 min: 3 features, 0 problems, 9 hidden scenarios.
+    - 01-todos passed on attempt 1 (73 s).
+    - 02-todo-edit failed 4/4 although its hidden tests passed from attempt 1. The model
+      deleted the CONTRACT docstring, then kept moving it below the imports, so the frame's
+      contract test failed. The inputs were fixed (the restore autofix, the frame update) and
+      Retry passed on attempt 1 (83 s).
+    - 03-todo-stats passed on attempt 1 (62 s).
+    - The app worked in the preview: add, tick, remove, counts. The native window opened.
+    - Every feature commit is by `swarm-agent`; no model code was edited by hand.
+    - Screenshots and the numbers are in [`docs/studio-demo/`](docs/studio-demo/README.md).
   - **In the browser, with the scripted planner and worker:**
     - chat, the plan artifact, then approve;
     - 3 tasks passed review;
@@ -56,13 +71,17 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
     - Retry and Skip appear in the chat and in the task view.
   - **pywebview:** a hidden WebView2 window loaded the studio and ran its JavaScript.
   - **Real chief:** the 14B planned the todo app in about 2-3 min, with 0 problems.
-- **Next:**
-  1. The end-to-end run with the real worker (`studio-14b`, about 10-30 min of GPU).
-     - Waits for the owner's OK, and for the GPU: the ChatBook P2 wave has it from about
-       20:45 for an hour.
-     - No Ollama calls until then, not even short ones.
-  2. Open the native window once on screen, at the end of that run.
-  3. Merge or push only when the owner asks.
+- **Next (ideas, not started):**
+  1. Re-run a fresh project end to end with the restore autofix in place from the start, to
+     confirm 02 then passes without a retry. One run is a direction, not a verdict.
+  2. A second demo app that isn't a todo list (the chief's few-shot example is a reading list,
+     so todo-like plans come easily).
+  3. UI tasks written by the model, which need a headless DOM runner for hidden tests
+     (ChatBook's `uirun.js` pattern).
+  4. A persistent store, so the preview keeps its data across restarts.
+  5. Merge or push only when the owner asks.
+- **Ask first:** GPU jobs. Other sessions (ChatBook) share the one GPU; check `/api/ps` and
+  ask before a long run.
 - **pywebview:** installed 2026-11-01, with the owner's OK, as the optional `desktop` extra
   (`uv sync --extra desktop`). It went into the studio worktree's venv only:
   - packages: pywebview 6.2.1, pythonnet, clr_loader, cffi, pycparser, bottle and
