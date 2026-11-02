@@ -43,6 +43,10 @@ class Target:
     # Files every agent call gets as read-only context (Aider --read). Useful when protected
     # files, which Aider otherwise never sees, are the API the agent must code against.
     context_files: list[str] = field(default_factory=list)
+    # What {python}, the import check and the hidden tests run with on the host. Default: the
+    # harness's own interpreter. Set it when the target needs packages or a Python version
+    # the harness doesn't have (e.g. an old Django app). Needs pytest installed.
+    python: Path | None = None
 
 
 @dataclass
@@ -116,6 +120,11 @@ def _target(name: str, raw: dict[str, Any], root: Path) -> Target:
     sandbox = raw.get("sandbox", "none")
     if sandbox not in SANDBOX_KINDS:
         raise ConfigError(f"targets.{name}: sandbox must be one of {SANDBOX_KINDS}: {sandbox!r}")
+    python = _path(root, raw["python"]) if raw.get("python") else None
+    if python and sandbox == "docker":
+        raise ConfigError(
+            f"targets.{name}: python is for the host; a docker target uses the image's interpreter"
+        )
     pythonpath = list(raw.get("pythonpath", []))
     architecture = None
     if "architecture" in raw:
@@ -143,6 +152,7 @@ def _target(name: str, raw: dict[str, Any], root: Path) -> Target:
         sandbox=sandbox,
         architecture=architecture,
         context_files=[str(f) for f in raw.get("context_files", [])],
+        python=python,
     )
 
 

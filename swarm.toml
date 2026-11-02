@@ -36,6 +36,9 @@ rules_file = "AGENTS.md"     # read from the base commit and handed to the agent
 pythonpath = ["src"]         # prepended (inside the worktree) for every gate
 import_check = "shopkit"     # must import from the worktree, not another checkout
 sandbox = "none"             # "docker": agent and gates run in containers (see [sandbox])
+# python = "../venvs/app/Scripts/python.exe"  # host only: {python}, the import check and the
+#                              hidden tests use this interpreter instead of the harness's own
+#                              (for a target whose packages or Python version differ); needs pytest
 
 # The single source of truth for "done". The prompt shows these to the agent;
 # AGENTS.md does not duplicate them. {python} is the harness venv interpreter.
