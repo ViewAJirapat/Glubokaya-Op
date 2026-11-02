@@ -1,6 +1,6 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-10-25 · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op`, branch `main` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
+**Updated:** 2026-11-02 on branch `studio` (section 0; `main` was last updated 2026-10-25) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
@@ -11,7 +11,7 @@ This is for whoever continues development **on another PC**, human or AI, with n
 
 ---
 
-## 0. Work in progress: Swarm Studio (branch `studio`, 2026-11-01)
+## 0. Work in progress: Swarm Studio (branch `studio`, 2026-11-01, updated 2026-11-02)
 
 A desktop app like Google Antigravity, built on the harness:
 1. you describe an app in a chat;
@@ -21,6 +21,40 @@ A desktop app like Google Antigravity, built on the harness:
 
 You watch the plan, the tasks, live logs, diffs and a live preview. Design and decisions:
 [`docs/studio.md`](docs/studio.md).
+
+### Shutdown checkpoint (2026-11-02): resume here
+
+The owner turned the PC off here. Nothing was lost:
+- **Git:** all work is committed on `studio` (this commit is the latest), and the tree is
+  clean. It is not pushed and not merged. `main` is untouched (`a916d24`).
+- **Running at shutdown:**
+  - no GPU job and no Ollama call from this work;
+  - only the native studio window on the `todo` project, which just closes. That window
+    ran the code from *before* the review fixes; the next start uses the fixed code.
+- **The `todo` project** (`work/studio/todo/`, git-ignored): built 3/3, with `state.json`
+  saved. The preview's data lived in memory, so it starts empty, as designed.
+- **The owner decides:** whether to merge `studio` into `main`, and whether to push. Don't
+  do either without being asked.
+
+After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktree's own
+`.venv`, never the main checkout's):
+1. **Health check:** `.venv\Scripts\python.exe -m pytest -q`. Expect 145 passed and 3
+   skipped (the usual Windows skips). Then `ruff check .` and `mypy --strict` must be clean.
+   Don't run `ruff format .` at the root; see 2b #15.
+2. **Without the GPU:** `.venv\Scripts\python.exe -m swarm -c work/dev-swarm.toml studio demo
+   --plan-file tests/studio/todo_plan.json -e solver`. Both the planner and the worker are
+   scripted. `work/dev-swarm.toml` is a git-ignored local copy of `swarm.toml` with the test
+   engines (`solver`, `noop`, `broken`) and `projects_dir = "studio-dev"`. Recreate it from
+   `tests/studio_helpers.py` if it's gone.
+3. **With the GPU:** first make sure Ollama is up (`curl http://localhost:11434/api/ps`)
+   and that no other session (ChatBook) is using the GPU. Ask the owner before a long run.
+   - Open the built app: `.venv\Scripts\python.exe -m swarm studio todo`.
+   - Start a new app: `swarm studio <new-name>`.
+   - The project's frame update runs the frame's gates first, so the review fixes reach
+     `todo` safely.
+4. **If uv is needed:** use `uv run --extra desktop ...` so pywebview stays installed. From a
+   Claude session, set `UV_CACHE_DIR` to `work/.uv-cache` (C: is nearly full).
+5. **Then:** "Next" below.
 
 - **Where:** branch `studio`, in the worktree `E:\Playground_Projects\04_AgentSwarm-studio`.
   - It has its own `.venv`. Other projects use the main checkout and its venv, so don't run
@@ -32,7 +66,8 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
   - first demo: a todo list.
 - **Run it:** `uv run swarm studio [PROJECT]` (default project `todo`).
   - `--window none|browser|edge|webview`.
-  - `--plan-file tests/studio/todo_plan.json` skips the model, to try the UI without the GPU.
+  - `--plan-file tests/studio/todo_plan.json` skips the chief model. The worker still uses
+    the GPU unless `-e` names a scripted engine (see the checkpoint above).
   - Projects live in `work/studio/<name>/`.
 - **Done:**
   - the frame `frames/webapp`, with `frames/webapp.toml`;
@@ -44,8 +79,9 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
   - `tools/restore_contracts.py` in the frame: an autofix that puts a deleted or misplaced
     CONTRACT back on top. `Project.update_frame()` brings existing projects' frame files up to
     date on start; it never touches features, `ui.json` or the CONTRACT snapshots;
-  - 28 tests: `tests/test_studio.py` (scripted planner and worker) and
-    `tests/test_studio_chief.py` (scripted model). The frame has its own 19.
+  - 51 tests: `tests/test_studio.py` (scripted planner and worker),
+    `tests/test_studio_chief.py` (scripted model) and `tests/test_studio_review.py` (the
+    review's regressions). The frame has its own 21.
 - **Verified:**
   - **Harness checks:** `pytest` passes; see the last commit message for the latest count.
     `ruff` and `mypy --strict` are clean.
