@@ -46,3 +46,14 @@ def test_changed_contract_is_replaced_and_an_intact_one_is_left_alone(tmp_path: 
     assert tool.restore(f, CONTRACT)
     assert _doc(f) == CONTRACT
     assert not tool.restore(f, CONTRACT)
+
+
+def test_line_breaks_python_does_not_count_do_not_shift_the_cut(tmp_path: Path) -> None:
+    f = tmp_path / "handler.py"
+    misplaced = CODE.replace("\n\n\n", f'\nSEP = 1  # page\x0cbreak\n"""{CONTRACT}\n"""\n\n\n', 1)
+    f.write_text(misplaced, encoding="utf-8")
+    assert _tool().restore(f, CONTRACT)
+    text = f.read_text(encoding="utf-8")
+    assert _doc(f) == CONTRACT and text.count("CONTRACT") == 1
+    assert "SEP = 1  # page\x0cbreak" in text and "def f(request: Request) -> int:" in text
+    ast.parse(text)

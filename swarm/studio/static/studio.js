@@ -99,7 +99,9 @@
     $('btn-pause').hidden = S.build !== 'running';
     var waiting = S.tasks.some(function (t) { return t.status === 'planned'; });
     var blocked = S.tasks.some(function (t) { return t.status === 'failed' || t.status === 'error'; });
-    $('btn-resume').hidden = !(S.build === 'paused' && waiting && !blocked);  // blocked: Retry/Skip
+    // Any stopped build with planned tasks can resume (e.g. after a failed start), unless a
+    // failed task blocks it: that one needs Retry or Skip.
+    $('btn-resume').hidden = !(S.build !== 'running' && waiting && !blocked && !S.busy);
     setBusy(S.busy);
     var done = S.tasks.filter(function (t) { return t.status === 'passed'; }).length;
     $('tab-tasks').textContent = S.tasks.length ? 'Tasks ' + done + '/' + S.tasks.length : 'Tasks';
@@ -124,10 +126,11 @@
     if (m.task) {
       var task = S.tasks.filter(function (t) { return t.id === m.task; })[0];
       var stuck = task && (task.status === 'failed' || task.status === 'error') && m.kind === 'error';
+      var skipped = task && task.status === 'skipped' && m.kind === 'error';
       bubble.appendChild(h('div', { class: 'actions' }, [
         h('button', { class: 'small ghost', text: 'Open ' + m.task, onclick: function () { selectTask(m.task); } }),
-        stuck ? h('button', { class: 'small', text: 'Retry', onclick: function () { post('/api/tasks/' + m.task + '/retry'); } }) : null,
-        stuck ? h('button', { class: 'small danger', text: 'Skip', onclick: function () { post('/api/tasks/' + m.task + '/skip'); } }) : null
+        stuck || skipped ? h('button', { class: 'small', text: 'Retry', onclick: function () { retryTask(m.task); } }) : null,
+        stuck ? h('button', { class: 'small danger', text: 'Skip', onclick: function () { skipTask(m.task); } }) : null
       ]));
     }
     return h('div', { class: 'msg ' + m.role + ' ' + kind }, [
@@ -151,6 +154,7 @@
     var hints = {
       none: 'Describe the app you want...',
       drafting: 'The chief is writing the plan...',
+      applying: 'Writing the plan into the app...',
       proposed: 'Comment on the plan, or approve it...',
       approved: S.build === 'running' ? 'Steer: notes are planned after this build...' : 'Ask for more features...'
     };
@@ -294,6 +298,21 @@
       if (running) selectTask(running.id);
     } else {
       renderDetailHead();
+      // The diff and attempts views have no live events: refetch when the task moves on.
+      if (sub !== 'log' && taskSignature(selected) !== detailSignature) loadDetail();
+    }
+  }
+
+  function taskSignature(tid) {
+    var t = S.tasks.filter(function (x) { return x.id === tid; })[0];
+    return t ? [t.status, t.attempts, t.runs.length].join('|') : '';
+  }
+
+  function retryTask(tid) { post('/api/tasks/' + tid + '/retry'); }
+
+  function skipTask(tid) {
+    if (confirm('Skip ' + tid + '? Later features that use its routes will fail their hidden tests. You can retry it later.')) {
+      post('/api/tasks/' + tid + '/skip');
     }
   }
 
@@ -305,9 +324,11 @@
     head.appendChild(h('b', { text: t.id }));
     head.appendChild(h('span', { class: 'chip ' + t.status, text: t.status }));
     if (t.branch) head.appendChild(h('code', { class: 'fn', text: t.branch }));
+    if (t.status === 'failed' || t.status === 'error' || t.status === 'skipped') {
+      head.appendChild(h('button', { class: 'small', text: 'Retry', onclick: function () { retryTask(t.id); } }));
+    }
     if (t.status === 'failed' || t.status === 'error') {
-      head.appendChild(h('button', { class: 'small', text: 'Retry', onclick: function () { post('/api/tasks/' + t.id + '/retry'); } }));
-      head.appendChild(h('button', { class: 'small danger', text: 'Skip', onclick: function () { post('/api/tasks/' + t.id + '/skip'); } }));
+      head.appendChild(h('button', { class: 'small danger', text: 'Skip', onclick: function () { skipTask(t.id); } }));
     }
     if (t.note) head.appendChild(h('div', { class: 'note', text: t.note }));
   }
@@ -318,6 +339,22 @@
     $('task-detail').hidden = false;
     renderTasks();
     loadDetail();
+  }
+
+  // Live log: each event carries its line number n. While the full log is being fetched,
+  // events are buffered; afterwards only lines past the fetched ones are appended.
+  var logLines = 0;       // lines of the selected task's log shown so far
+  var logBuffer = null;   // events that arrived during a fetch (null: no fetch running)
+  var detailSignature = '';
+
+  function appendLog(d) {
+    if (d.n <= logLines) return;  // already in the fetched text
+    if (d.n > logLines + 1) { loadDetail(); return; }  // a gap (e.g. a reconnect): resync
+    var pre = $('detail-log');
+    var stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 60;
+    pre.appendChild(logLine(d.line, d.stream));
+    logLines = d.n;
+    if (stick) pre.scrollTop = pre.scrollHeight;
   }
 
   function logLine(text, stream) {
@@ -331,16 +368,24 @@
   function loadDetail() {
     if (!selected) return;
     var tid = selected;
+    detailSignature = taskSignature(tid);
     if (sub === 'log') {
+      logBuffer = [];
       api('GET', '/api/tasks/' + tid + '/log').then(function (text) {
         if (tid !== selected) return;
         var pre = $('detail-log');
         pre.textContent = '';
-        text.split('\n').forEach(function (line) {
+        var lines = text.split('\n');
+        if (lines[lines.length - 1] === '') lines.pop();  // the text ends with a newline
+        lines.forEach(function (line) {
           if (line) pre.appendChild(logLine(line, line.indexOf('  | ') === 0 ? 'model' : ''));
         });
+        logLines = lines.length;
+        var buffered = logBuffer || [];
+        logBuffer = null;
+        buffered.forEach(appendLog);
         pre.scrollTop = pre.scrollHeight;
-      });
+      }, function () { logBuffer = null; });
     } else if (sub === 'diff') {
       api('GET', '/api/tasks/' + tid + '/diff').then(function (text) {
         if (tid !== selected) return;
@@ -458,10 +503,8 @@
       seq = Number(e.lastEventId) || seq;
       var d = JSON.parse(e.data);
       if (d.task !== selected || sub !== 'log') return;
-      var pre = $('detail-log');
-      var stick = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 60;
-      pre.appendChild(logLine(d.line, d.stream));
-      if (stick) pre.scrollTop = pre.scrollHeight;
+      if (logBuffer) logBuffer.push(d);
+      else appendLog(d);
     });
     es.addEventListener('preview', function (e) {
       seq = Number(e.lastEventId) || seq;

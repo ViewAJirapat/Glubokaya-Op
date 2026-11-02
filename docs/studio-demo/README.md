@@ -41,6 +41,12 @@ Taken in the Claude browser pane at a 1440x900 viewport (saved at 800x500).
 | `real-12-diff-and-remove.jpg` | One todo removed (counts 1 / 1 / 0), and the Diff of task 03: the 14B's `get_todo_stats` |
 | `real-13-desktop-window.png` | The native desktop window (pywebview on WebView2), captured at full size (1500x950). The preview's data reset because the store is in memory |
 
+## After the review fixes
+
+| File | What it shows |
+|---|---|
+| `review-01-build-cannot-start.jpg` | A worker whose start check fails (no Ollama on its port): the build pauses with the reason in the chat, and Resume is offered. It used to stay "idle" with no way to start |
+
 ## The real run in numbers (2026-11-02, GTX 1080 Ti)
 
 | Step | Time | Result |

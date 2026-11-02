@@ -31,7 +31,9 @@ def test_body_helpers() -> None:
     assert _status(lambda: r.flag("flag")) == 400  # 1 is not a bool
     assert _status(lambda: r.number("done")) == 400  # a bool is not a number
     assert _status(lambda: _req({"title": "   "}).text("title")) == 400
-    assert _status(lambda: _req({"title": "x" * 201}).text("title")) == 400
+    assert _req({"title": "x" * 500}).text("title") == "x" * 500  # no limit unless asked
+    assert _status(lambda: _req({"title": "x" * 81}).text("title", max_len=80)) == 400
+    assert _req({"title": " " + "x" * 80}).text("title", max_len=80) == "x" * 80
     assert _status(lambda: _req([1]).fields()) == 400
     assert _status(lambda: _req(None).text("title")) == 400
     assert not _req(None).has("title")

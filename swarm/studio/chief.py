@@ -436,18 +436,12 @@ class Chief:
         progress: Say,
     ) -> Plan:
         plan = self._outline(request, previous, comment, built, progress)
-        reuse = {f.name: f for f in (previous.features if previous else [])}
         built_names = {f.name for f in built}
         new = [f for f in plan.features if f.name not in built_names]
         for n, f in enumerate(new, 1):
-            old = reuse.get(f.name)
-            if (
-                old
-                and old.routes == f.routes
-                and old.scenarios
-                and not comment_mentions(comment, f)
-            ):
-                f.scenarios = old.scenarios
+            old = _reusable(previous, plan, f, comment)
+            if old is not None:
+                f.scenarios = old
                 continue
             label = f"examples for {f.name} ({n}/{len(new)})"
             f.scenarios = self._scenarios(plan, f, None, _prefixed(progress, label))
@@ -556,6 +550,30 @@ class FilePlanner:
 
 def _prefixed(progress: Say, label: str) -> Say:
     return lambda message: progress(f"{label}: {message}")
+
+
+def _reusable(
+    previous: Plan | None, plan: Plan, feature: Feature, comment: str | None
+) -> list[planmod.Scenario] | None:
+    """The previous plan's scenarios for this feature, if they are still valid: its routes
+    and every earlier feature's routes are unchanged (scenarios call those to set up data),
+    the owner's comment doesn't name it, and the scenarios still pass the checks."""
+    if previous is None or comment_mentions(comment, feature):
+        return None
+    old = previous.feature(feature.name)
+    if old is None or not old.scenarios or old.routes != feature.routes:
+        return None
+    index = plan.features.index(feature)
+    before_now = [(f.name, f.routes) for f in plan.features[:index]]
+    old_index = previous.features.index(old)
+    before_then = [(f.name, f.routes) for f in previous.features[:old_index]]
+    if before_now != before_then:
+        return None
+    saved = feature.scenarios
+    feature.scenarios = old.scenarios
+    ok = not planmod.scenario_problems(plan, feature)
+    feature.scenarios = saved
+    return old.scenarios if ok else None
 
 
 def comment_mentions(comment: str | None, feature: Feature) -> bool:

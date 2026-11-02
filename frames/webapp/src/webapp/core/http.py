@@ -2,7 +2,9 @@
 
 The helpers on Request raise the right HTTPError themselves, so a handler needs few ifs:
 - request.param_int("id")         path segment {id} as int; 404 when it is not a whole number
-- request.text("title")           body field: a non-empty string (stripped); 400 otherwise
+- request.text("title")           body field: a non-empty string (stripped); 400 otherwise.
+                                  request.text("title", max_len=80) also gives 400 when the
+                                  stripped text is longer than 80 characters
 - request.flag("done")            body field: true or false; 400 otherwise
 - request.number("amount")        body field: an int or float (not a bool); 400 otherwise
 - request.has("title")            True when the JSON body has that field
@@ -45,11 +47,11 @@ class Request:
     def has(self, name: str) -> bool:
         return isinstance(self.body, dict) and name in self.body
 
-    def text(self, name: str, max_len: int = 200) -> str:
+    def text(self, name: str, max_len: int | None = None) -> str:
         value = self.fields().get(name)
         if not isinstance(value, str) or not value.strip():
             raise HTTPError(400, f"{name!r} must be a non-empty string")
-        if len(value.strip()) > max_len:
+        if max_len is not None and len(value.strip()) > max_len:
             raise HTTPError(400, f"{name!r} is longer than {max_len} characters")
         return value.strip()
 

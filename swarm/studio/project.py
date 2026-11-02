@@ -34,7 +34,7 @@ from typing import Any, Protocol
 
 from swarm import config as config_mod
 from swarm import dispatch, git, sandbox, verify
-from swarm.config import Config, Target
+from swarm.config import SANDBOX_KINDS, Config, Target
 from swarm.engines import make_engine
 from swarm.runner import ERROR, INVALID, PASSED, RunSummary, new_run_id, run_task
 from swarm.studio import plan as planmod
@@ -83,6 +83,7 @@ class StudioSettings:
     num_predict: int = 3072
     projects_dir: str = "work/studio"
     feedback_chars: int = 3000  # failure output per retry; 8k-context models need it small
+    sandbox: str = "none"  # "docker": worker and checks run in containers (swarm/sandbox.py)
 
     @classmethod
     def load(cls, config_path: Path) -> StudioSettings:
@@ -92,7 +93,10 @@ class StudioSettings:
         unknown = set(raw) - known
         if unknown:
             raise config_mod.ConfigError(f"[studio]: unknown keys {sorted(unknown)}")
-        return cls(**raw)
+        settings = cls(**raw)
+        if settings.sandbox not in SANDBOX_KINDS:
+            raise config_mod.ConfigError(f"[studio]: sandbox must be one of {SANDBOX_KINDS}")
+        return settings
 
 
 @dataclass
@@ -159,6 +163,7 @@ def project_config(root: Path, harness_config: Path, settings: StudioSettings) -
     with FRAME_TARGET.open("rb") as fh:
         target: dict[str, Any] = tomllib.load(fh)
     target.update(repo=str(root / "app"), tasks=str(root / "tasks"), template=str(FRAME))
+    target["sandbox"] = settings.sandbox  # [studio] sandbox, or `swarm --sandbox ... studio`
     defaults = dict(data.get("defaults", {}))
     defaults.update(
         target=TARGET,
@@ -185,6 +190,7 @@ class Project:
         harness_config: Path = HARNESS_ROOT / "swarm.toml",
         settings: StudioSettings | None = None,
         engine: str | None = None,
+        sandbox: str | None = None,
     ) -> None:
         self.root = root.resolve()
         self.name = self.root.name
@@ -192,6 +198,8 @@ class Project:
         self.settings = settings or StudioSettings()
         if engine:
             self.settings.engine = engine
+        if sandbox:
+            self.settings.sandbox = sandbox
         self.cfg = project_config(self.root, harness_config, self.settings)
         self.target: Target = self.cfg.target(TARGET)
         self.engine = self.cfg.engine(self.settings.engine)
@@ -200,9 +208,12 @@ class Project:
         self.preview = Preview(self.app, self.root / "preview.log")
         self.busy = ""
         self._lock = threading.RLock()
+        self._log_lock = threading.Lock()
+        self._log_lines: dict[str, int] = {}  # task id -> lines in logs/<task>.log
         self._jobs: queue.Queue[tuple[str, Callable[[], None]] | None] = queue.Queue()
         self._pause = threading.Event()
         self._worker: threading.Thread | None = None
+        self._interrupted_apply = False
         self.state = self._load()
 
     # -- lifecycle ---------------------------------------------------------------------------
@@ -212,6 +223,16 @@ class Project:
         if not self.app.exists():
             dispatch.demo_init(self.cfg, self.target, FRAME, force=False, log=lambda _m: None)
         else:
+            if self._interrupted_apply and git.git(self.app, "status", "--porcelain").strip():
+                # Only the studio writes the app's working tree, and apply_plan was cut off
+                # before its commit: these are its half-written stubs.
+                self._discard_app_changes()
+                self._say(
+                    "chief",
+                    "Writing the plan into the app was interrupted; I removed the half-written "
+                    "files. Approve the plan again.",
+                    kind="build",
+                )
             updated = self.update_frame()
             if updated:
                 self._say(
@@ -258,10 +279,27 @@ class Project:
             changed.append(rel)
         if not changed:
             return []
-        red = [s for s in verify.run_gates(self.app, self.target, 300) if not s.ok]
+        # main holds only work that passes every gate and every accepted task's hidden tests;
+        # a frame update must keep it that way.
+        timeout = self.cfg.settings.verify_timeout
+        red = [s.name for s in verify.run_gates(self.app, self.target, timeout) if not s.ok]
+        for t in self.state.tasks:
+            if t.status != "passed":
+                continue
+            task = load_task(self.target.tasks_dir / t.id)
+            work = self.root / "frame-update" / t.id
+            acc = verify.run_acceptance(self.app, task, self.target, work, timeout)
+            if acc is not None and not acc.ok:
+                red.append(f"hidden tests of {t.id}")
         if red:
-            git.git(self.app, "reset", "-q", "--hard", "HEAD")
-            git.git(self.app, "clean", "-q", "-fd")
+            self._discard_app_changes()
+            self._say(
+                "chief",
+                "A newer app frame is available but would break this app ("
+                + ", ".join(red)
+                + "), so the app keeps its frame.",
+                kind="error",
+            )
             return []
         git.git(self.app, "add", "-A")
         message = f"studio: frame update ({len(changed)} file(s))\n\n" + "\n".join(changed)
@@ -280,13 +318,23 @@ class Project:
             state.build = "paused"
         if state.plan_status == "drafting":
             state.plan_status = "proposed" if state.plan else "none"
+        if state.plan_status == "applying":  # stopped while writing the plan into the app
+            state.plan_status = "proposed"
+            self._interrupted_apply = True
         return state
 
     def _save(self) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
-        tmp = self.root / "state.json.tmp"
-        tmp.write_text(json.dumps(asdict(self.state), indent=1), encoding="utf-8")
-        tmp.replace(self.root / "state.json")
+        # Called from HTTP threads and the job thread: one writer at a time, or the second
+        # replace() of state.json fails on Windows while the first still has the file open.
+        with self._lock:
+            self.root.mkdir(parents=True, exist_ok=True)
+            tmp = self.root / "state.json.tmp"
+            tmp.write_text(json.dumps(asdict(self.state), indent=1), encoding="utf-8")
+            tmp.replace(self.root / "state.json")
+
+    def _discard_app_changes(self) -> None:
+        git.git(self.app, "reset", "-q", "--hard", "HEAD")
+        git.git(self.app, "clean", "-q", "-fd")
 
     # -- what the UI reads ---------------------------------------------------------------------
 
@@ -339,9 +387,12 @@ class Project:
         raise StudioError(f"no task {tid!r}")
 
     def task_log(self, tid: str) -> str:
+        """The whole log. Read under the log lock, so a client that buffers live `log`
+        events while fetching this can drop exactly the lines it already has (event `n`)."""
         self.task(tid)
         path = self.root / "logs" / f"{tid}.log"
-        return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+        with self._log_lock:
+            return path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
 
     def task_diff(self, tid: str) -> str:
         t = self.task(tid)
@@ -400,9 +451,12 @@ class Project:
         self._say("user", text)
         with self._lock:
             status, build = self.state.plan_status, self.state.build
-            if status == "drafting":
+            if status in ("drafting", "applying"):
                 self.state.pending.append(text)
-                self._say("chief", "I'm still writing the plan; I'll take this into account next.")
+                self._save()
+                self._say(
+                    "chief", "I'm still working on the plan; I'll take this into account next."
+                )
             elif build == "running":
                 self.state.pending.append(text)
                 self._save()
@@ -432,7 +486,8 @@ class Project:
             if self.state.build == "running":
                 raise StudioError("a build is running")
             plan = planmod.plan_from_dict(self.state.plan)
-            self.state.plan_status = "approved"
+            # "approved" only once apply_plan has committed; a failure goes back to "proposed"
+            self.state.plan_status = "applying"
             self._publish_state()
         self._say("user", f"Approved plan v{plan.version}.", kind="action")
         self._submit("writing the plan into the app", lambda: self._apply_and_build(plan))
@@ -493,12 +548,19 @@ class Project:
             try:
                 job()
             except Exception as exc:  # the UI shows it; the studio keeps running
-                self._say("chief", f"Something went wrong while {label}: {exc}", kind="error")
-                with (self.root / "errors.log").open("a", encoding="utf-8") as fh:
-                    fh.write(f"--- {datetime.now()} {label}\n{traceback.format_exc()}\n")
+                details = traceback.format_exc()
+                try:
+                    self._say("chief", f"Something went wrong while {label}: {exc}", kind="error")
+                    with (self.root / "errors.log").open("a", encoding="utf-8") as fh:
+                        fh.write(f"--- {datetime.now()} {label}\n{details}\n")
+                except Exception:  # reporting must never end the only job thread
+                    pass
             finally:
-                self._set_busy("")
-                self._publish_state()
+                try:
+                    self._set_busy("")
+                    self._publish_state()
+                except Exception:
+                    pass
                 self._jobs.task_done()
 
     def wait_idle(self, timeout: float) -> bool:
@@ -555,7 +617,13 @@ class Project:
     # -- plan -> files in the app repo -------------------------------------------------------------
 
     def _apply_and_build(self, plan: Plan) -> None:
-        self.apply_plan(plan)
+        try:
+            self.apply_plan(plan)
+        except BaseException:
+            with self._lock:  # nothing was committed: the plan can be approved again
+                self.state.plan_status = "proposed"
+                self._publish_state()
+            raise
         self._pause.clear()
         self._build()
 
@@ -569,32 +637,18 @@ class Project:
         if status.strip():
             raise StudioError(f"the app repo has uncommitted changes:\n{status}")
         for f in new:
-            folder = app / f.folder
-            if folder.exists():
+            if (app / f.folder).exists():
                 raise StudioError(f"{f.folder} already exists in the app")
-            folder.mkdir(parents=True)
-            (folder / "__init__.py").write_text(planmod.init_source(f), encoding="utf-8")
-            (folder / "handler.py").write_text(planmod.stub_source(f), encoding="utf-8")
-        (app / UI_FILE).write_text(json.dumps(plan.ui_json(), indent=2) + "\n", encoding="utf-8")
-        timeout = self.cfg.settings.verify_timeout
-        verify.run_autofix(app, self.target, timeout)  # stubs exactly as ruff formats them
-        contracts_path = app / CONTRACTS
-        contracts: dict[str, str] = json.loads(contracts_path.read_text(encoding="utf-8"))
-        for f in new:
-            tree = ast.parse((app / f.handler).read_text(encoding="utf-8"))
-            contracts[f.handler] = ast.get_docstring(tree, clean=True) or ""
-        contracts_path.write_text(json.dumps(contracts, indent=2, sort_keys=True) + "\n", "utf-8")
-        red = [s for s in verify.run_gates(app, self.target, timeout) if not s.ok]
-        if red:
-            git.git(app, "reset", "-q", "--hard", "HEAD")
-            git.git(app, "clean", "-q", "-fd")
-            details = "\n\n".join(f"{s.name}:\n{s.output[-1500:]}" for s in red)
-            raise StudioError(f"the generated stubs fail the frame's gates:\n{details}")
-        git.git(app, "add", "-A")
-        names = ", ".join(f.name for f in new) or "page only"
-        if git.git(app, "status", "--porcelain").strip():
-            message = f"studio: plan v{plan.version} ({names})"
-            git.git(app, *git.identity_args(app), "commit", "-q", "-m", message)
+        try:  # any failure before the commit leaves the app exactly as it was
+            self._write_plan_files(plan, new)
+            git.git(app, "add", "-A")
+            names = ", ".join(f.name for f in new) or "page only"
+            if git.git(app, "status", "--porcelain").strip():
+                message = f"studio: plan v{plan.version} ({names})"
+                git.git(app, *git.identity_args(app), "commit", "-q", "-m", message)
+        except BaseException:
+            self._discard_app_changes()
+            raise
         start = len(self.state.tasks) + 1
         with self._lock:
             for order, f in enumerate(new, start):
@@ -618,12 +672,37 @@ class Project:
             "the page; parts not built yet are marked.",
         )
 
+    def _write_plan_files(self, plan: Plan, new: list[Feature]) -> None:
+        app = self.app
+        for f in new:
+            folder = app / f.folder
+            folder.mkdir(parents=True)
+            (folder / "__init__.py").write_text(planmod.init_source(f), encoding="utf-8")
+            (folder / "handler.py").write_text(planmod.stub_source(f), encoding="utf-8")
+        (app / UI_FILE).write_text(json.dumps(plan.ui_json(), indent=2) + "\n", encoding="utf-8")
+        timeout = self.cfg.settings.verify_timeout
+        verify.run_autofix(app, self.target, timeout)  # stubs exactly as ruff formats them
+        contracts_path = app / CONTRACTS
+        contracts: dict[str, str] = json.loads(contracts_path.read_text(encoding="utf-8"))
+        for f in new:
+            tree = ast.parse((app / f.handler).read_text(encoding="utf-8"))
+            contracts[f.handler] = ast.get_docstring(tree, clean=True) or ""
+        contracts_path.write_text(json.dumps(contracts, indent=2, sort_keys=True) + "\n", "utf-8")
+        red = [s for s in verify.run_gates(app, self.target, timeout) if not s.ok]
+        if red:
+            details = "\n\n".join(f"{s.name}:\n{s.output[-1500:]}" for s in red)
+            raise StudioError(f"the generated stubs fail the frame's gates:\n{details}")
+
     # -- the build ---------------------------------------------------------------------------------
 
     def _build(self) -> None:
-        box = sandbox.make_box(self.cfg, self.target)
-        box.preflight()
-        make_engine(self.engine).preflight(box)  # Ollama up, model pulled, aider installed
+        try:  # Ollama up, model pulled, aider installed; else the build waits for Resume
+            box = sandbox.make_box(self.cfg, self.target)
+            box.preflight()
+            make_engine(self.engine).preflight(box)
+        except Exception as exc:
+            self._stop_build("paused", f"The build can't start: {exc}\nFix that, then Resume.")
+            return
         with self._lock:
             self.state.build = "running"
             self._publish_state()
@@ -642,23 +721,26 @@ class Project:
                     self._stop_build("paused", self._failure_note(t), t.id)
                     return
         except Exception:
+            with self._lock:  # never leave a task "running" with no Retry
+                for t in self.state.tasks:
+                    if t.status == "running":
+                        t.status, t.note = "error", "the studio hit an error during this task"
             self._stop_build("paused", "")
             raise
         done = sum(t.status == "passed" for t in self.state.tasks)
         self._stop_build("done", f"Build finished: {done}/{len(self.state.tasks)} features built.")
-        if self.state.pending:
-            pending, self.state.pending = self.state.pending, []
-            self._save()
-            previous = planmod.plan_from_dict(self.state.approved or {})
-            request = "\n".join(pending)
-            self._submit("planning additions", lambda: self._draft(request, previous, request))
 
     def _stop_build(self, status: str, note: str, task: str | None = None) -> None:
         with self._lock:
             self.state.build = status
+            pending, self.state.pending = self.state.pending, []
             self._publish_state()
         if note:
             self._say("chief", note, kind="error" if task else "build", task=task)
+        if pending:  # notes that arrived during the build ("I'll plan it after the build")
+            previous = planmod.plan_from_dict(self.state.approved or {})
+            request = "\n".join(pending)
+            self._submit("planning additions", lambda: self._draft(request, previous, request))
 
     def _failure_note(self, t: TaskState) -> str:
         what = "did not pass" if t.status == "failed" else "hit an error"
@@ -667,14 +749,25 @@ class Project:
             "attempt's feedback. Then retry it (the model's answers vary), or skip it."
         )
 
-    def _log(self, tid: str, line: str, stream: str = "harness") -> None:
-        if stream == "model":
-            line = MODEL_MARK + line  # so a reloaded log still tells the model's lines apart
+    def _log(self, tid: str, text: str, stream: str = "harness") -> None:
+        """Append to logs/<task>.log and publish each line with its 1-based number `n`, so the
+        UI can merge a fetched log with live events without losing or repeating lines."""
         path = self.root / "logs" / f"{tid}.log"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(line + "\n")
-        self.events.publish("log", {"task": tid, "line": line, "stream": stream})
+        with self._log_lock:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if tid not in self._log_lines:
+                existing = (
+                    path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+                )
+                self._log_lines[tid] = len(existing.splitlines())
+            with path.open("a", encoding="utf-8") as fh:
+                for line in text.splitlines() or [""]:
+                    if stream == "model":
+                        line = MODEL_MARK + line  # a reloaded log still shows the model's lines
+                    fh.write(line + "\n")
+                    self._log_lines[tid] += 1
+                    data = {"task": tid, "line": line, "stream": stream, "n": self._log_lines[tid]}
+                    self.events.publish("log", data)
 
     def _run(self, t: TaskState) -> None:
         task = load_task(self.target.tasks_dir / t.id)
@@ -711,7 +804,14 @@ class Project:
         with self._lock:
             t.attempts, t.seconds, t.base_sha = s.iterations, s.seconds, s.base_sha
         if s.status == PASSED:
-            self._review(t, s)
+            try:
+                self._review(t, s)
+            except Exception as exc:  # e.g. integrate or the fast-forward raised
+                self._log(t.id, f"review error: {type(exc).__name__}: {exc}")
+                with self._lock:
+                    t.status = "error"
+                    t.note = f"passed alone, but the review hit an error: {exc}"
+                    self._publish_state()
         else:
             with self._lock:
                 t.status = "error" if s.status in (ERROR, INVALID) else "failed"
@@ -799,6 +899,7 @@ def open_project(
     *,
     harness_config: Path = HARNESS_ROOT / "swarm.toml",
     engine: str | None = None,
+    sandbox: str | None = None,
 ) -> Project:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,40}", name):
         raise StudioError(f"bad project name {name!r}: letters, digits, - and _ only")
@@ -807,5 +908,10 @@ def open_project(
     if not projects.is_absolute():
         projects = harness_config.resolve().parent / projects
     return Project(
-        projects / name, planner, harness_config=harness_config, settings=settings, engine=engine
+        projects / name,
+        planner,
+        harness_config=harness_config,
+        settings=settings,
+        engine=engine,
+        sandbox=sandbox,
     )

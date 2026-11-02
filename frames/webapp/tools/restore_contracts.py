@@ -22,7 +22,9 @@ def restore(path: Path, expected: str) -> bool:
         return False  # ruff and mypy report it; don't guess
     if ast.get_docstring(tree, clean=True) == expected:
         return False
-    lines = text.splitlines(keepends=True)
+    # Split exactly as the parser counts lines (read_text already turned \r\n and \r into \n);
+    # str.splitlines would also split on form feeds and other characters and shift the lines.
+    lines = text.split("\n")
     drop: list[tuple[int, int]] = []
     for n, node in enumerate(tree.body):
         if not (
@@ -31,11 +33,15 @@ def restore(path: Path, expected: str) -> bool:
             and isinstance(node.value.value, str)
         ):
             continue
-        if n == 0 or "CONTRACT" in inspect.cleandoc(node.value.value):
-            drop.append((node.lineno, node.end_lineno or node.lineno))
+        if not (n == 0 or "CONTRACT" in inspect.cleandoc(node.value.value)):
+            continue
+        start, end = node.lineno, node.end_lineno or node.lineno
+        after = lines[end - 1].encode("utf-8")[node.end_col_offset or 0 :]
+        if node.col_offset == 0 and not after.strip():  # alone on its lines: safe to cut
+            drop.append((start, end))
     for start, end in sorted(drop, reverse=True):
         del lines[start - 1 : end]
-    body = "".join(lines).lstrip("\n")
+    body = "\n".join(lines).lstrip("\n")
     doc = expected.replace("\\", "\\\\").replace('"""', "'''")
     path.write_text(f'"""{doc}\n"""\n\n{body}', encoding="utf-8")
     return True

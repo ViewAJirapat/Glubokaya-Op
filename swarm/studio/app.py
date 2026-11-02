@@ -84,6 +84,7 @@ def run(
     port: int,
     window: str,
     plan_file: Path | None = None,
+    sandbox: str | None = None,
     log: Callable[[str], None] = print,
 ) -> int:
     settings = StudioSettings.load(config_path)
@@ -94,7 +95,7 @@ def run(
         llm = Ollama(settings.ollama, settings.chief_model, settings.num_ctx, settings.num_predict)
         planner = Chief(llm)
     project: Project = open_project(
-        project_name, planner, harness_config=config_path, engine=engine
+        project_name, planner, harness_config=config_path, engine=engine, sandbox=sandbox
     )
     project.start()
     try:

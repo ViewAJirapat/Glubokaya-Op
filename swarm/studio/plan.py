@@ -53,7 +53,8 @@ def ascii_text(text: str) -> str:
     text = text.translate(_ASCII)
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
     text = text.replace("\r\n", "\n").replace("\r", "\n")
-    return "".join(c for c in text if c in "\n\t" or ord(c) >= 32)  # TOML refuses the rest
+    # TOML refuses the other control characters, DEL (U+007F) included
+    return "".join(c for c in text if c in "\n\t" or 32 <= ord(c) < 127)
 
 
 def _ascii_value(value: Any) -> Any:
@@ -224,11 +225,21 @@ def _status(value: Any) -> int:
         return 0
 
 
+def _json_text(value: Any) -> Any:
+    """A model sometimes writes JSON as a string ('{"id": 1}'); parse that, keep the rest."""
+    if isinstance(value, str) and value.strip()[:1] in ("{", "["):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return value
+    return value
+
+
 def step_from_dict(raw: dict[str, Any]) -> Step:
-    body = raw.get("body")
+    body = _json_text(raw.get("body"))
     if body in ({}, "", "null"):
         body = None
-    expect = raw.get("expect")
+    expect = _json_text(raw.get("expect"))
     if expect in ("", "null"):
         expect = None
     return Step(
@@ -347,7 +358,14 @@ def _route_problems(plan: Plan, built: set[str]) -> list[str]:
             problems.append(f"{where}: no routes")
         if len(f.routes) > MAX_ROUTES:
             problems.append(f"{where}: {len(f.routes)} routes; split it (at most {MAX_ROUTES})")
+        functions: dict[str, str] = {}
         for r in f.routes:
+            if r.function in functions:
+                problems.append(
+                    f"{where}: {functions[r.function]} and {r.key} would both be function "
+                    f"{r.function}; change one path"
+                )
+            functions[r.function] = r.key
             if r.method not in METHODS:
                 problems.append(f"{where}: unknown method {r.method!r}")
             segs = _segments(r.path)
@@ -441,6 +459,11 @@ def scenario_problems(plan: Plan, feature: Feature) -> list[str]:
                 problems.append(f"{label} step {n}: status {st.status} is not an HTTP status")
             if st.body is not None and not isinstance(st.body, dict):
                 problems.append(f"{label} step {n}: the body must be a JSON object or null")
+            if st.expect is not None and not isinstance(st.expect, dict | list):
+                problems.append(
+                    f"{label} step {n}: expect must be the reply JSON (an object or a list) "
+                    "or null, not text"
+                )
             if any(_is_param(s) for s in _segments(st.path)):
                 problems.append(f"{label} step {n}: use a real value in {st.path}, not a {{param}}")
         if sc.steps and not hits_own:
@@ -448,10 +471,22 @@ def scenario_problems(plan: Plan, feature: Feature) -> list[str]:
     return problems
 
 
+def _length_problems(feature: Feature) -> list[str]:
+    """The frame's ruff allows 100 characters a line and can't fix longer ones."""
+    longest = max((stub_source(feature) + init_source(feature)).splitlines(), key=len, default="")
+    if len(longest) <= 100:
+        return []
+    return [
+        f"feature {feature.name!r}: a generated line is {len(longest)} characters long "
+        f"(at most 100): shorten the title, paths or texts ({longest.strip()[:60]}...)"
+    ]
+
+
 def problems(plan: Plan, built: set[str] | None = None) -> list[str]:
     out = _route_problems(plan, built or set()) + _ui_problems(plan)
     for f in plan.features:
         out += scenario_problems(plan, f)
+        out += _length_problems(f)
     return out
 
 
@@ -481,7 +516,7 @@ def spec_lines(feature: Feature) -> list[str]:
         lines += _wrap(f"Data: {feature.data}")
         lines.append("")
     for r in feature.routes:
-        lines.append(f"{r.key} -> function {r.function}")
+        lines += _wrap(f"{r.key} -> function {r.function}")
         lines += _wrap(r.does, "  ")
         if r.body:
             lines += _wrap(f"Body: {r.body}", "  ")
@@ -500,7 +535,7 @@ def _docstring_safe(text: str) -> str:
 
 
 def stub_source(feature: Feature) -> str:
-    doc = [f"{feature.name}: {feature.title}.".replace("..", "."), ""]
+    doc = [*_wrap(f"{feature.name}: {feature.title}.".replace("..", ".")), ""]
     doc += ["CONTRACT (keep this docstring unchanged; implement exactly this):"]
     doc += spec_lines(feature)
     body = "\n".join(line.rstrip() for line in doc)
@@ -518,7 +553,10 @@ def stub_source(feature: Feature) -> str:
 
 
 def init_source(feature: Feature) -> str:
-    return f'"""{_docstring_safe(feature.title)}."""\n'.replace('.."""', '."""')
+    lines = _wrap(_docstring_safe(f"{feature.title}.".replace("..", ".")))
+    if len(lines) == 1:
+        return f'"""{lines[0]}"""\n'
+    return '"""' + "\n".join(lines) + '\n"""\n'
 
 
 def task_id(order: int, feature: Feature) -> str:
@@ -588,7 +626,7 @@ SCENARIOS: list[dict[str, Any]] = json.loads({scenarios!r})
 
 
 def _short(value: Any) -> str:
-    text = json.dumps(value)
+    text = json.dumps(value, default=repr)
     return text if len(text) <= 300 else text[:300] + "..."
 
 
@@ -629,8 +667,13 @@ def test_scenario(scenario: dict[str, Any]) -> None:
         problems = []
         if resp.status != step["status"]:
             problems.append(f"status: expected {{step['status']}}, got {{resp.status}}")
+        try:  # judge the JSON the app serves, not the Python object
+            body = json.loads(json.dumps(resp.body))
+        except (TypeError, ValueError) as exc:
+            body = None
+            problems.append(f"the reply is not JSON-serializable: {{exc}}")
         if step.get("expect") is not None:
-            problems += _mismatches(step["expect"], resp.body, "reply")
+            problems += _mismatches(step["expect"], body, "reply")
         request = f"{{step['method']}} {{step['path']}}"
         if step.get("body") is not None:
             request += " " + _short(step["body"])

@@ -4,7 +4,6 @@ Restarted whenever main moves, so the preview always shows what passed every che
 from __future__ import annotations
 
 import json
-import os
 import socket
 import subprocess
 import sys
@@ -13,7 +12,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from swarm.util import IS_WINDOWS
+from swarm.util import IS_WINDOWS, agent_env
 
 
 def free_port() -> int:
@@ -63,25 +62,26 @@ class Preview:
                 return self._start()
             return False
 
-    def _start(self) -> bool:
-        env = {
-            k: v
-            for k, v in os.environ.items()
-            if not k.upper().startswith(("PYTHON", "VIRTUAL_ENV"))
-        }
-        env.update(
-            PYTHONPATH=str(self.app_dir / "src"),
-            PYTHONDONTWRITEBYTECODE="1",
-            PYTHONUTF8="1",
-            HOST="127.0.0.1",
-            PORT=str(self.port),
+    def child_env(self) -> dict[str, str]:
+        """Model-written code runs here: the same scrubbed environment as the harness's gates
+        (an allow-list, so no tokens or keys; git credentials and remotes disabled)."""
+        return agent_env(
+            [],
+            {
+                "PYTHONPATH": str(self.app_dir / "src"),
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "HOST": "127.0.0.1",
+                "PORT": str(self.port),
+            },
         )
+
+    def _start(self) -> bool:
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
         with self.log_file.open("ab") as log:
             proc = subprocess.Popen(
                 [sys.executable, "-m", self.module],
                 cwd=self.app_dir,
-                env=env,
+                env=self.child_env(),
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,

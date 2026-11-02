@@ -15,8 +15,9 @@ automated gates and hidden tests, and commits it only if everything passes.
 ## Request, response, data
 - `request.param_int("id")`: the `{id}` path segment as an int (404 when it is not one).
 - `request.text("title")`: a body field that must be a non-empty string; returns it stripped
-  (400 otherwise). `request.flag("done")`: a body field that must be true or false (400
-  otherwise). `request.number("amount")`: an int or float (400 otherwise).
+  (400 otherwise). Add `max_len=80` only when the CONTRACT gives a length limit.
+- `request.flag("done")`: a body field that must be true or false (400 otherwise).
+  `request.number("amount")`: an int or float (400 otherwise).
   `request.has("title")`: whether the body has that field.
 - `request.store`: the app's data. `insert(collection, item)` returns the item with a new
   `"id"` (1, 2, 3, ...); `all(collection)` lists items oldest first; `get(collection, id)`

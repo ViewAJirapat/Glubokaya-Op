@@ -183,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
                     port=args.port,
                     window=args.window,
                     plan_file=Path(args.plan_file) if args.plan_file else None,
+                    sandbox=args.sandbox,  # the studio builds its own target
                     log=log,
                 )
             case "tasks":

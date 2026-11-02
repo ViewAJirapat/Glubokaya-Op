@@ -84,3 +84,8 @@ def test_wsgi_edge_cases() -> None:
     assert _wsgi("POST", "/api/health", "-1")[0] == "400 Bad Request"
     assert _wsgi("POST", "/api/health", "abc")[0] == "400 Bad Request"
     assert _wsgi("POST", "/api/health", "2", b"{x")[0] == "400 Bad Request"
+
+
+def test_static_paths_that_could_reach_other_files_are_refused() -> None:
+    for path in ("//host/share", "/static//host/share", "/static/..\app.py", "/static/C:/x"):
+        assert _wsgi("GET", path)[0] == "404 Not Found", path

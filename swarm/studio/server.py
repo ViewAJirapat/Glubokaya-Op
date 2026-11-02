@@ -25,6 +25,21 @@ STATIC = Path(__file__).resolve().parent / "static"
 KEEPALIVE = 15.0
 
 
+def static_file(path: str) -> Path | None:
+    """The UI file a URL path names, checked before the filesystem is touched: on Windows a
+    path such as //host/share would make resolve() open a network share."""
+    if path == "/":
+        parts = ["index.html"]
+    elif path.startswith("/static/"):
+        parts = path.removeprefix("/static/").split("/")
+    else:
+        return None
+    if any(p in ("", ".", "..") or "\\" in p or ":" in p for p in parts):
+        return None
+    target = STATIC.joinpath(*parts)
+    return target if target.is_file() else None
+
+
 class ExclusiveServer(ThreadingHTTPServer):
     """On Windows, SO_REUSEADDR (Python's default for HTTP servers) lets a second server bind
     a port another app already listens on, and the browser then reaches either one. Seen
@@ -96,11 +111,12 @@ def _handler(server: StudioServer) -> type[BaseHTTPRequestHandler]:
             if host not in (f"127.0.0.1:{server.port}", f"localhost:{server.port}"):
                 return False
             given = self.headers.get("X-Studio-Token") or (query.get("token") or [""])[0]
-            return secrets.compare_digest(given, server.token)
+            # bytes: compare_digest raises TypeError on non-ASCII str (a forged token)
+            return secrets.compare_digest(given.encode("utf-8", "replace"), server.token.encode())
 
         def _body(self) -> dict[str, Any]:
             length = self.headers.get("Content-Length", "0")
-            if not length.isdigit() or int(length) > 1_000_000:
+            if not (length.isascii() and length.isdigit()) or int(length) > 1_000_000:
                 return {}
             raw = self.rfile.read(int(length)) if int(length) else b""
             try:
@@ -141,10 +157,8 @@ def _handler(server: StudioServer) -> type[BaseHTTPRequestHandler]:
             return self._json(404, {"error": "not found"})
 
         def _static(self, path: str) -> None:
-            name = "index.html" if path == "/" else path.removeprefix("/static/")
-            target = (STATIC / name).resolve()
-            ok = (path == "/" or path.startswith("/static/")) and target.is_relative_to(STATIC)
-            if not ok or not target.is_file():
+            target = static_file(path)
+            if target is None:
                 return self._send(404, b"not found", "text/plain")
             ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
             if ctype.startswith("text/") or ctype.endswith("javascript"):

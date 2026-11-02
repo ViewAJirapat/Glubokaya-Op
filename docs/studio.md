@@ -119,11 +119,18 @@ is never shared.
 
 ## Security
 
-The server binds 127.0.0.1 only. Every `/api/` call needs the session token, and a `Host`
-header naming the server, so a web page or a DNS-rebinding attack can't drive it. The page
-uses `textContent` only. The worker runs exactly as in the harness (scrubbed environment,
-guard, optional Docker sandbox). The preview runs the generated app as your user, like the
-harness's gates do on the host.
+- **The server:**
+  - binds 127.0.0.1 only, with an exclusive bind on Windows;
+  - every `/api/` call needs the session token (compared as bytes, so a forged token gets a
+    plain 403) and a `Host` header naming the server, so a web page or a DNS-rebinding
+    attack can't drive it;
+  - static paths are checked before the filesystem is touched (on Windows, `//host/share`
+    would otherwise open a network share).
+- **The page** uses `textContent` only.
+- **The worker** runs exactly as in the harness: scrubbed environment, guard, and the Docker
+  sandbox if chosen (`[studio] sandbox = "docker"` or `swarm --sandbox docker studio`).
+- **The preview** runs the generated app with the same scrubbed environment as the gates
+  (an allow-list, with git credentials and remotes off), as your user, on the host.
 
 ## The first real run (2026-11-02)
 
@@ -139,6 +146,25 @@ One chat message, then the local 14B chief and worker on the GTX 1080 Ti:
 - **03-todo-stats:** passed on attempt 1.
 
 Screenshots and timings are in [`studio-demo/`](studio-demo/README.md).
+
+## Review (2026-11-02)
+
+A multi-agent review covered the whole branch:
+- 6 reviewers: build loop, plan and codegen, security, harness integration, frontend, frame;
+- 2 skeptics per finding, with a third on a split vote.
+
+It confirmed 23 problems: 2 high, 9 medium and 12 low. All are fixed, most with a
+regression test in `tests/test_studio_review.py` or the frame's tests.
+- **The worst:**
+  - approving a plan whose stubs failed the gates wedged the project; approve now goes
+    through an "applying" status and rolls back;
+  - the chief reused old hidden tests after an earlier feature changed.
+- **Others:**
+  - the preview ran model code with the full environment;
+  - `--sandbox` was ignored by the studio;
+  - stubs could fail the frame's line-length gate after approval;
+  - a reply given as text made a hidden test impossible to pass;
+  - unsynchronized writes of `state.json` could kill the job thread.
 
 ## Limits of the MVP
 

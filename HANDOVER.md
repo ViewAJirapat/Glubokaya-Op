@@ -71,6 +71,16 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
     - Retry and Skip appear in the chat and in the task view.
   - **pywebview:** a hidden WebView2 window loaded the studio and ran its JavaScript.
   - **Real chief:** the 14B planned the todo app in about 2-3 min, with 0 problems.
+- **Review (2026-11-02):** a multi-agent review of the branch at `9d28069` (6 reviewers; 2
+  skeptics per finding, a third on a split) confirmed 23 problems. All are fixed.
+  - Regression tests are in `tests/test_studio_review.py` and the frame's tests.
+  - Summary: [`docs/studio.md`](docs/studio.md), "Review".
+  - The first attempt hit a usage limit: 5 reviewers and every verifier failed. Its "refuted"
+    list was only failed verifiers counted as refutations. The workflow now reports those
+    as "unverified".
+  - The UI fixes were checked in the browser: a build that can't start pauses with the
+    reason and offers Resume; Resume builds; the diff view follows a task to "passed"
+    (`docs/studio-demo/review-01-build-cannot-start.jpg`).
 - **Next (ideas, not started):**
   1. Re-run a fresh project end to end with the restore autofix in place from the start, to
      confirm 02 then passes without a retry. One run is a direction, not a verdict.
@@ -223,6 +233,7 @@ are tied; repeat runs (`-r 3`) would settle the default brain.
 12. **Installing uv-managed Python or uv tools from inside the Claude desktop app.** It's a packaged (MSIX) app, so Windows redirects its child processes' writes under `AppData` to `...\Packages\Claude_*\LocalCache`. `uv tool install` then breaks ("Missing expected target directory for Python minor version link"), or installs where a normal terminal can't see it. From a Claude session, set `UV_PYTHON_INSTALL_DIR`, `UV_TOOL_DIR` and `UV_CACHE_DIR` to folders under `~\.local\share\uv` for that command; from a normal terminal, nothing special is needed. On the RTX 4080 PC, Aider lives in `~\.local\share\uv\tools`, so `uv tool upgrade` needs `UV_TOOL_DIR` set there.
 13. **Trusting `os.walk(followlinks=False)` on Windows.** It still descends into junctions, and `Path.is_symlink()` is False for them. Check `Path.is_junction()` too.
 14. **Python's default HTTP server bind on Windows.** `http.server`, `socketserver` and `wsgiref` set `SO_REUSEADDR`, and on Windows that lets a second server bind a port another app already listens on. The browser then reaches either app. Seen 2026-11-01: the studio and a ChatBook server both listened on one port. The studio and the webapp frame bind with `SO_EXCLUSIVEADDRUSE` (`swarm/studio/server.py:ExclusiveServer`).
+15. **`ruff format .` at the repo root.** ruff 0.17 also formats Python code blocks inside Markdown, so it rewrites the owner's `autonomous_coding_agent_swarm_blueprint.md`, which must stay as is. Format the code folders by name (`ruff format swarm tests frames`); the harness's own check is `ruff check .`.
 
 ---
 

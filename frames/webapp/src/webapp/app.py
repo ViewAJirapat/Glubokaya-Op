@@ -87,10 +87,17 @@ class App:
         return [b""] if method == "HEAD" else [data]
 
     def _static(self, path: str) -> tuple[int, str, bytes]:
-        name = "index.html" if path == "/" else path.removeprefix("/static/")
-        target = (STATIC / name).resolve()
-        if path != "/" and not path.startswith("/static/") or not target.is_relative_to(STATIC):
+        # Check the name before touching the filesystem: on Windows, resolving a path like
+        # //host/share would open a network share.
+        if path == "/":
+            parts = ["index.html"]
+        elif path.startswith("/static/"):
+            parts = path.removeprefix("/static/").split("/")
+        else:
             return 404, "text/plain", b"not found"
+        if any(p in ("", ".", "..") or "\\" in p or ":" in p for p in parts):
+            return 404, "text/plain", b"not found"
+        target = STATIC.joinpath(*parts)
         if not target.is_file():
             return 404, "text/plain", b"not found"
         ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
