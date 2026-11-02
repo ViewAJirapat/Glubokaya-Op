@@ -139,6 +139,66 @@ After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktr
 
 ---
 
+## 0b. Work in progress: Programtour, developed by the local model (2026-11-02)
+
+The owner's request: "use Glubokaya-Op with llm to dev it, and you are a head chief". Claude
+plans, writes each task's exact spec, hidden tests and reference solution, and reviews. The
+local qwen 14B writes the feature code through the harness. This is ChatBook's pattern.
+
+- **The app:** `E:\Playground_Projects\Programtour` (GitHub `ViewAJirapat/Programtour`, which
+  is **public**), a tour-booking site:
+  - backend: Django 4.0 + DRF + Wagtail 2.16 in `panntour/`;
+  - frontend: React in `client/`.
+- **Branches** (owner's request): `v1` and `dev` were created from `main` (`c1fd7a4`) and
+  pushed; the checkout is on `dev`.
+  - Staff commit `0e22cb0` on `dev`, not pushed:
+    - `AGENTS.md`;
+    - `TIME_ZONE` set to Asia/Bangkok;
+    - CORS middleware moved before CommonMiddleware;
+    - `PubWebTour.pem` untracked, with `*.pem` ignored.
+  - That key is an SSH private key that was public on GitHub; the owner must replace it on
+    its server.
+- **Harness side:** `E:\Playground_Projects\Programtour-swarm`, its own local git repo (like
+  ChatBook's `harness/`):
+  - `swarm.toml`, the target `programtour`:
+    - base `dev`;
+    - gates: `manage.py check`, `makemigrations --check`, ruff (errors only),
+      `manage.py test`;
+    - autofix: `makemigrations`;
+    - protected: client, settings, existing migrations, tests;
+  - `.venv`: Python 3.10 (Django 4.0 can't run on 3.13+), 107 MB, with the owner's OK;
+  - `tasks/`, `tools/hidden.sh` (runs a task's hidden tests on any checkout),
+    `notes/survey/` (the verified survey of bugs, security, the client contract and features).
+  - Run the harness from this worktree:
+    `.venv\Scripts\python.exe -m swarm -c ..\Programtour-swarm\swarm.toml <validate|run|integrate>`.
+- **Harness changes for it (on `studio`):**
+  - `b58d980`: a target's own `python` (host only), used for `{python}`, the import check
+    and the hidden tests;
+  - `b57ea41`: gate labels name scripts by their file.
+- **Hidden tests for Django:** each task's `acceptance/conftest.py` sets
+  `DJANGO_SETTINGS_MODULE=krabi.settings` and calls `django.setup()`. pytest-django sets up
+  too early to see an env var set later.
+- **Wave 1** (approved by the owner 2026-11-02):
+
+  | Task | File | Change |
+  |---|---|---|
+  | pt-01 | models.py | imports, status defaults, tourid size, tour text caps |
+  | pt-02 | views.py | logins reply 401/400 instead of 500 |
+  | pt-03 | views.py | `/addtourbooking/` validation, no "null" placeholders |
+  | pt-04 | serializers.py | write-only passwords, unique usernames |
+  | pt-05 | views.py | `?userid=` filter on the booking list |
+
+  - Oracle: 5/5 validate; integrate green with 83 hidden tests.
+  - The oracle branches were deleted; their runs are archived in `runs/oracle-validate/`.
+  - Next: independent spec review (workflow), then the GPU runs one task at a time. After each
+    pass, integrate and fast-forward `dev`.
+- **Out of scope until designed:** real authentication (sessions, permissions, hashed
+  passwords). The critic showed it would break the client and every earlier hidden test, so
+  it lands last, as one designed change. Also the client fixes (the shadowed `config` in 3
+  files, `?userid=` in BookingTable.js and StatusTable.js).
+
+---
+
 ## 1. Objective & Status
 
 **Goal:** coding agents that run on the owner's own hardware, as a fallback for when Claude usage limits run out, plus a trustworthy way to measure how good a local model really is.
