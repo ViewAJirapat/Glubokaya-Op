@@ -188,10 +188,35 @@ local qwen 14B writes the feature code through the harness. This is ChatBook's p
   | pt-04 | serializers.py | write-only passwords, unique usernames |
   | pt-05 | views.py | `?userid=` filter on the booking list |
 
-  - Oracle: 5/5 validate; integrate green with 83 hidden tests.
-  - The oracle branches were deleted; their runs are archived in `runs/oracle-validate/`.
-  - Next: independent spec review (workflow), then the GPU runs one task at a time. After each
-    pass, integrate and fast-forward `dev`.
+  - Oracle: 5/5 validate. The oracle branches were deleted; their runs are archived in
+    `runs/oracle-validate/`.
+  - Spec review: 5 reviewers each implemented a task from its spec alone. Every hidden test
+    was justified. Their weak-test findings were fixed, including a shared test that every
+    view keeps its decorators.
+  - **Done 2026-11-02: 5/5 accepted, all written by the local 14B.**
+    - pt-01, 02, 04 and 05 passed on the first attempt (3.5-4.5 min each).
+    - pt-03 failed 4/4 on one test: the model applied the "null" -> None rule only to the
+      counts. The spec now spells it out as an explicit loop, and the retry passed on the
+      first attempt.
+    - `dev` @ `f73affa` (11 commits ahead of `origin/dev`, **not pushed**). All gates and
+      143 hidden tests are green. Diffs reviewed; the only extras are whitespace on
+      untouched lines.
+    - `accepted.txt` lists the 5 branches. `tools/wave.sh` is the chief loop: run, then
+      integrate with the accepted branches, fast-forward `dev`, and stop at the first failure.
+- **Ollama after a reboot:** start it from a normal PowerShell window, not the Claude app's
+  terminal panel, with `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0`. Started
+  from the app's terminal it found no GPU (`total_vram="0 B"`) and ran the 14B on the CPU at
+  0.85 tok/s; the first pt-01 run timed out because of it. Correctly started: 8.88/8.88 GB in
+  VRAM, 25 tok/s. The tray app can't start its own server here.
+- **Next candidates (owner decides):**
+  - push `dev`;
+  - Wave 2 backend: rewrite updateTourDetail/deleteTourDetail (junk rows), clean old
+    "null"/"จอง" rows with a data migration, a server-side price from the tour (needs unique
+    tour codes first);
+  - the client fixes: the shadowed `config` in 3 files, `?userid=` in BookingTable.js and
+    StatusTable.js, the refund-proof URL missing `/api`. These need JS gates, so `npm install`
+    (about 350 MB, ask first);
+  - real authentication, last, as one designed change.
 - **Out of scope until designed:** real authentication (sessions, permissions, hashed
   passwords). The critic showed it would break the client and every earlier hidden test, so
   it lands last, as one designed change. Also the client fixes (the shadowed `config` in 3
