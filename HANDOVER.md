@@ -203,6 +203,30 @@ local qwen 14B writes the feature code through the harness. This is ChatBook's p
       untouched lines.
     - `accepted.txt` lists the 5 branches. `tools/wave.sh` is the chief loop: run, then
       integrate with the accepted branches, fast-forward `dev`, and stop at the first failure.
+- **Wave 1 was pushed** (`origin/dev` @ `f73affa`) at the owner's request.
+- **Wave 2 (2026-11-02, done): 5/5 accepted, all written by the local 14B:**
+
+  | Task | Change |
+  |---|---|
+  | pt-06 | updateTourDetail: no junk rows, id 400/404, partial serializer update, images only from uploads |
+  | pt-07 | deleteTourDetail: 400/404/200 JSON |
+  | pt-08 | addTourDetail: serializer validation; `''`, `"null"` and `"undefined"` become None |
+  | pt-09 | `?tourcategory=` / `?search=` on the tour list |
+  | pt-10 | data migration 0009: placeholders become NULL, Thai statuses become codes |
+
+  - Staff stub commit for 0009: `e7a59d1`.
+  - pt-06 failed 4/4 first: the model checked "empty" before the alias fallback. The spec now
+    gives the exact loop, and the retry passed on attempt 2. All the others passed on the
+    first attempt.
+  - The spec review caught a real regression in the reference solution of pt-08: `''`
+    descriptions would have been rejected. It also caught a pt-10 test that passed
+    `schema_editor=None`.
+  - `dev` @ `4549faa`. All gates and 275 hidden tests (10 tasks) are green. Diffs reviewed.
+    **Wave 2 is not pushed.**
+  - Behavior the client will see: adding a tour without both images is now a 400. The
+    client only logs it, so a client fix should show the error.
+- **Lesson (both waves):** where order or scope matters, give the 14B the exact loop.
+  Prose like "a value that is X becomes Y" or "see below" was read narrowly (pt-03, pt-06).
 - **Ollama after a reboot:** start it from a normal PowerShell window, not the Claude app's
   terminal panel, with `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0`. Started
   from the app's terminal it found no GPU (`total_vram="0 B"`) and ran the 14B on the CPU at
