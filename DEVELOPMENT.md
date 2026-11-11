@@ -20,6 +20,7 @@ current state (setup, decisions, dead ends, open issues), read [`HANDOVER.md`](H
 | 10 | Phase S: Studio on `main`, pluggable chief | 2026-11-11 | `d60ae99`, merge | `Chief(backend: ChiefBackend)`; `studio` merged with its history; cost lines in HANDOVER |
 | 11 | Phase C: Claude chief, `swarm mcp` | 2026-11-11 | `501a223` .. | Claude as an optional metered chief; the harness as an MCP server for Claude Code / Antigravity |
 | 12 | Phase A: protected blocks | 2026-11-11 | `e8a43c1` .. | `protected_blocks`: the harness keeps a file's CONTRACT block on top; replaces the per-project restorers |
+| 13 | Phase B: context budget, token counts | 2026-11-11 | `feat/b` | a prompt that cannot fit is refused before the call; aider's token lines and Ollama overflows recorded |
 
 ### 0. The blueprint
 
@@ -183,6 +184,28 @@ doing nothing. The fixes are listed in the README under "What changed from the b
 - **Tests:** `tests/test_blocks.py`: the text rules, a git worktree, `run_task` with
   `tests/agents/mover.py` (applies the reference fix and moves the block) passing with the
   block restored and committed on top, and the no-markers case.
+
+### 13. Phase B: context budget and token counts (2026-11-11)
+
+- **What:** `context_window` and `reply_reserve` per engine; `engines.count_tokens` through
+  Ollama's `/api/tokenize` with the `len / 3.3` estimate as the fallback; `runner.check_budget`
+  before each call writes `budget.txt` and refuses a call that cannot fit; `parse_tokens` reads
+  aider's `Tokens:` lines into the record and `max_sent`; `overflow_lines` reads what Ollama's
+  log appended during the call when `[defaults] ollama_log` names it. The table has a TOKENS
+  column; `--no-budget-check` exists on run, bench and validate, and on the MCP tools.
+- **Decisions:** the budget counts what the harness sends (prompt, rules, the task's and the
+  target's named files), not the engine's own system prompt or repo map; the overflow grep
+  uses the log's byte offset at call start, not timestamps, so any log format works; the
+  budget check needs a `context_window`, so engines without one (command, oracle, Claude)
+  are never refused.
+- **Proof, and a correction to the plan:** cb-38 counts 5,635 tokens with the estimate and
+  fits at both reserves. The plan's "about 7.0k, fails at 2048" came from aider's reported
+  total, which includes its own prompt. HANDOVER section 0 has the numbers.
+- **Tests:** `tests/test_budget.py`: the `Tokens:` parser, the estimate, a stub tokenizer
+  server (used, 404 falls back, unreachable falls back), the overflow grep by offset, the
+  config, a refused run with `budget.txt`, `budget_check=False`, and `tests/agents/talker.py`
+  (prints token lines and appends an overflow line to a fake Ollama log) through `run_task`,
+  `summary.json` and the table.
 
 ## Part 2: how to develop it
 

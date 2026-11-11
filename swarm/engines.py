@@ -9,6 +9,8 @@ container. Claude (file tools only) and the oracle (git apply) always run on the
 from __future__ import annotations
 
 import json
+import re
+import urllib.error
 import urllib.request
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -57,6 +59,79 @@ class AgentResult:
 
 class EngineError(Exception):
     pass
+
+
+# -- token accounting (PLAN.md phase B) -----------------------------------------------------------
+
+# Characters per token when no tokenizer is reachable: measured on the ChatBook P2 prompts
+# (qwen2.5-coder:14b, English prose plus Python and JavaScript), 2026-11-01.
+CHARS_PER_TOKEN = 3.3
+# Aider prints one of these per LLM call: "Tokens: 5.3k sent, 1.6k received."
+TOKENS_LINE = re.compile(r"Tokens:\s*([\d.,]+)(k?)\s*sent,\s*([\d.,]+)(k?)\s*received", re.I)
+# Ollama / llama.cpp server-log lines that mean the prompt or the reply did not fit.
+OVERFLOW_PATTERNS = ("truncated = 1", "context shift", "truncating input prompt", "input truncated")
+
+
+def ollama_base(spec: EngineSpec) -> str | None:
+    """The Ollama server an engine talks to, when it is one."""
+    base = spec.env.get("OLLAMA_API_BASE")
+    if base and spec.model and spec.model.startswith(("ollama/", "ollama_chat/")):
+        return base.rstrip("/")
+    return None
+
+
+def count_tokens(text: str, spec: EngineSpec, timeout: float = 120.0) -> tuple[int, str]:
+    """(tokens, how): the model's own tokenizer through Ollama's /api/tokenize when the engine
+    is an Ollama one and the server answers; else `len(text) / CHARS_PER_TOKEN`."""
+    base = ollama_base(spec)
+    if base and spec.model:
+        model = spec.model.split("/", 1)[1]
+        payload = json.dumps({"model": model, "prompt": text}).encode("utf-8")
+        request = urllib.request.Request(
+            f"{base}/api/tokenize", payload, {"Content-Type": "application/json"}
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as resp:
+                data = json.load(resp)
+            tokens = data.get("tokens") if isinstance(data, dict) else None
+            if isinstance(tokens, list):
+                return len(tokens), f"ollama tokenizer ({model})"
+        except (urllib.error.URLError, OSError, ValueError):
+            pass  # an old server, or none: estimate
+    return int(len(text) / CHARS_PER_TOKEN + 0.5), f"estimate ({CHARS_PER_TOKEN} chars/token)"
+
+
+def _tokens(number: str, k: str) -> int:
+    value = float(number.replace(",", ""))
+    return int(value * 1000 + 0.5) if k else int(value + 0.5)
+
+
+def parse_tokens(output: str) -> list[list[int]]:
+    """Every `Tokens: X sent, Y received` line of an aider log, as [sent, received] pairs."""
+    return [
+        [_tokens(sent, ks), _tokens(received, kr)]
+        for sent, ks, received, kr in TOKENS_LINE.findall(output)
+    ]
+
+
+def log_size(path: Path | None) -> int:
+    try:
+        return path.stat().st_size if path else 0
+    except OSError:
+        return 0
+
+
+def overflow_lines(path: Path | None, offset: int) -> list[str]:
+    """Lines appended to the Ollama log since `offset` that report a context overflow."""
+    if path is None:
+        return []
+    try:
+        with path.open("rb") as fh:
+            fh.seek(offset)
+            new = fh.read().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    return [line.strip() for line in new.splitlines() if any(p in line for p in OVERFLOW_PATTERNS)]
 
 
 def _which(name: str, hint: str, box: Box = HOST) -> str:

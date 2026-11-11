@@ -60,6 +60,11 @@ def _add_run_opts(p: argparse.ArgumentParser, *, engine: bool = True) -> None:
         help="concurrent tasks (keep 1 for a single local GPU)",
     )
     p.add_argument("--keep", action="store_true", help="keep the worktree even on success")
+    p.add_argument(
+        "--no-budget-check",
+        action="store_true",
+        help="send the prompt even when it cannot fit the engine's context_window",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -141,6 +146,7 @@ def _run_like(cfg: Config, args: argparse.Namespace, spec: EngineSpec) -> int:
         keep_worktree=args.keep,
         push=getattr(args, "push", False),
         pr=getattr(args, "pr", False),
+        budget_check=not args.no_budget_check,
     )
     log("\n" + dispatch.table(summaries))
     if args.cmd == "bench":

@@ -49,15 +49,19 @@ def _fmt_seconds(sec: float) -> str:
 
 def table(summaries: list[RunSummary]) -> str:
     width = max([len("TASK")] + [len(s.task_id) for s in summaries])
-    rows = [f"{'TASK':<{width}}  {'STATUS':<12} {'ITER':<5} {'TIME':>7}  {'COST':>7}  NOTE"]
+    head = f"{'TASK':<{width}}  {'STATUS':<12} {'ITER':<5} {'TIME':>7}  {'COST':>7}  "
+    rows = [head + f"{'TOKENS':>7}  NOTE"]
     for s in summaries:
         cost = f"${s.cost_usd:.3f}" if s.cost_usd is not None else "-"
+        tokens = f"{s.max_sent}" if s.max_sent is not None else "-"
+        if s.overflows:
+            tokens += "!"  # a context overflow in the Ollama log
         note = s.error or (s.worktree and f"kept {s.worktree}") or s.branch
         if s.reverted_total:
             note = f"[{s.reverted_total} protected edit(s) reverted] {note}"
         rows.append(
             f"{s.task_id:<{width}}  {s.status:<12} {s.iterations}/{s.max_iterations:<3} "
-            f"{_fmt_seconds(s.seconds):>7}  {cost:>7}  {note}"
+            f"{_fmt_seconds(s.seconds):>7}  {cost:>7}  {tokens:>7}  {note}"
         )
     passed = [s for s in summaries if s.status == PASSED]
     if summaries:
@@ -70,6 +74,9 @@ def table(summaries: list[RunSummary]) -> str:
         errors = sum(s.status == ERROR for s in summaries)
         if errors:
             rows.append(f"{errors} run(s) hit infrastructure errors, not model failures (see NOTE)")
+        sent = [s.max_sent for s in summaries if s.max_sent is not None]
+        if sent:
+            rows.append(f"largest LLM call {max(sent)} tokens sent (TOKENS: per run; ! = overflow)")
     return "\n".join(rows)
 
 

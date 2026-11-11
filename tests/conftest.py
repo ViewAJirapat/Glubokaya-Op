@@ -30,7 +30,7 @@ def cfg(tmp_path: Path) -> Config:
     target["template"] = str(ROOT / "demo" / "shopkit")
     target["tasks"] = str(ROOT / "tasks" / "demo")
     target["sandbox"] = "none"  # the scripted agents are host scripts; docker tests opt in
-    for name in ("noop", "cheater", "cosmetic", "crasher", "messy", "mover"):
+    for name in ("noop", "cheater", "cosmetic", "crasher", "messy", "mover", "talker"):
         script = str(AGENTS / f"{name}.py")
         data["engines"][name] = {"kind": "command", "cmd": [sys.executable, script]}
 

@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from swarm import archlint, blocks, git, guard, sandbox, verify
+from swarm import engines as engines_mod
 from swarm.config import Config, EngineSpec, Target
 from swarm.engines import AgentContext, make_engine
 from swarm.sandbox import HOST, Box
@@ -46,6 +47,9 @@ class IterationRecord:
     stages: list[dict[str, object]]
     passed: bool
     restored: list[str] = field(default_factory=list)  # protected blocks put back (blocks.py)
+    prompt_tokens: int | None = None  # the budget check's count (prompt, rules, named files)
+    tokens: list[list[int]] = field(default_factory=list)  # [sent, received] per LLM call
+    overflowed: bool = False  # the Ollama log reported a context overflow during the call
 
 
 @dataclass
@@ -69,11 +73,59 @@ class RunSummary:
     pushed: bool = False
     pr_url: str | None = None
     sandbox: str = "none"
+    max_sent: int | None = None  # the largest LLM call, from aider's Tokens lines
+    overflows: int = 0  # iterations whose Ollama log showed a context overflow
     records: list[IterationRecord] = field(default_factory=list)
 
 
 class RunError(Exception):
     pass
+
+
+def budget(
+    wt: Path, task: Task, target: Target, spec: EngineSpec, prompt: str, rules: Path | None
+) -> tuple[dict[str, int], int, str]:
+    """What one agent call sends, before the engine's own overhead: the prompt, the rules
+    file and the files the task and the target name. Returns (chars per part, tokens, how)."""
+    parts: dict[str, str] = {"prompt": prompt}
+    if rules is not None:
+        parts["rules"] = rules.read_text(encoding="utf-8")
+    for rel in [*target.context_files, *task.files]:
+        file = wt / rel
+        if rel not in parts and file.is_file():
+            parts[rel] = file.read_text(encoding="utf-8", errors="replace")
+    total, how = engines_mod.count_tokens("\n".join(parts.values()), spec)
+    return {name: len(text) for name, text in parts.items()}, total, how
+
+
+def check_budget(
+    idir: Path,
+    wt: Path,
+    task: Task,
+    target: Target,
+    spec: EngineSpec,
+    prompt: str,
+    rules: Path | None,
+) -> int | None:
+    """Write iter-N/budget.txt; raise RunError when the call cannot fit the context window."""
+    if not spec.context_window:
+        return None
+    chars, total, how = budget(wt, task, target, spec, prompt, rules)
+    room = spec.context_window - spec.reply_reserve
+    lines = [f"{name}: {n} chars" for name, n in chars.items()]
+    lines.append(f"total: {total} tokens ({how})")
+    lines.append(
+        f"window {spec.context_window} - reply reserve {spec.reply_reserve} = {room} for the "
+        f"call; {'fits' if total <= room else 'DOES NOT FIT'}"
+    )
+    (idir / "budget.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if total > room:
+        raise RunError(
+            f"prompt too large: {total} tokens of {room} ({spec.context_window} window - "
+            f"{spec.reply_reserve} reply reserve; {how}); trim the prompt or the files it "
+            "names, or run with --no-budget-check"
+        )
+    return total
 
 
 def new_run_id(task: Task, spec: EngineSpec) -> str:
@@ -297,6 +349,7 @@ def run_task(
     pr: bool = False,
     log: Log = print,
     run_id: str | None = None,
+    budget_check: bool = True,
 ) -> RunSummary:
     settings = cfg.settings
     engine = make_engine(spec)
@@ -360,6 +413,12 @@ def run_task(
             prompt = build_prompt(task, target, n, feedback)
             prompt_file = idir / "prompt.md"
             prompt_file.write_text(prompt, encoding="utf-8")
+            prompt_tokens = None
+            if budget_check:
+                prompt_tokens = check_budget(idir, wt, task, target, spec, prompt, rules_file)
+                if prompt_tokens is not None:
+                    say(f"  prompt {prompt_tokens} tokens of {spec.context_window}")
+            log_offset = engines_mod.log_size(settings.ollama_log)
 
             say(f"iteration {n}/{s.max_iterations}: running {spec.label}")
             ctx = AgentContext(
@@ -375,6 +434,14 @@ def run_task(
             )
             agent = engine.run(prompt, ctx)
             (idir / "agent.log").write_text(agent.res.output, encoding="utf-8")
+            tokens = engines_mod.parse_tokens(agent.res.output)
+            overflow = engines_mod.overflow_lines(settings.ollama_log, log_offset)
+            if overflow:
+                s.overflows += 1
+                (idir / "overflow.txt").write_text("\n".join(overflow) + "\n", encoding="utf-8")
+            if tokens:
+                largest = max(sent for sent, _ in tokens)
+                s.max_sent = max(s.max_sent or 0, largest)
             if agent.res.timed_out:
                 say(f"agent timed out after {settings.agent_timeout}s (checking its edits anyway)")
 
@@ -425,6 +492,9 @@ def run_task(
                 stages=_stage_dicts(all_stages),
                 passed=passed,
                 restored=restored,
+                prompt_tokens=prompt_tokens,
+                tokens=tokens,
+                overflowed=bool(overflow),
             )
             s.records.append(rec)
             s.iterations = n
@@ -440,6 +510,10 @@ def run_task(
                 line += f" | reverted {len(report.reverted)} edit(s)"
             if restored:
                 line += f" | restored {len(restored)} block(s)"
+            if tokens:
+                line += " | tokens " + ", ".join(f"{a}/{b}" for a, b in tokens)
+            if overflow:
+                line += " | CONTEXT OVERFLOW (see overflow.txt)"
             if report.violations:
                 line += f" | {len(report.violations)} forbidden line(s)"
             say("  " + line)

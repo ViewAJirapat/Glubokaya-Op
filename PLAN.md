@@ -49,7 +49,7 @@ gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
 | S | Merge `studio` into `main`; a pluggable chief | planning leaves Claude | done 2026-11-11 |
 | C | Connect Claude or Antigravity as an optional chief | a stronger planner on demand, metered | done 2026-11-11 (comparison run pending) |
 | A | Protected CONTRACT blocks in the harness | fewer failed runs to diagnose | done 2026-11-11 |
-| B | Context-budget check and token counts | no silent overflows; the cost line gets numbers | 1-2 days |
+| B | Context-budget check and token counts | no silent overflows; the cost line gets numbers | done 2026-11-11 |
 | L | Task lint | prompt mistakes caught before a 20-minute run | 1 day |
 | R | Cheaper retries, stop when stuck | fewer wasted iterations, shorter logs to read | 1 day |
 | E | Bench per task and `compare` | pick the local model that needs the least Claude help | 1 day |
@@ -141,7 +141,13 @@ oracle never moves a block. ChatBook's own autofix line is the owner's to drop.
 5. Prove on ChatBook's `chatbook-oracle` with its own `--restore-contracts` line removed
    in a scratch copy of its config. Studio's copy of the fix is then dropped too.
 
-### Phase B: context budget and token counts
+### Phase B: context budget and token counts (done 2026-11-11)
+
+Done as written, with one correction to step 6: cb-38 counts 5,635 tokens (prompt, rules,
+the two named files) and fits at both reserves; the "about 7.0k" was aider's reported total
+including its own system prompt, which the budget does not count. The estimate is on the
+safe side of what aider sent. Ollama was down, so the tokenizer path is proved by a stub
+server test, not on the GPU.
 
 1. `EngineSpec.context_window`, `EngineSpec.reply_reserve = 2048`; set for the local
    engines in `swarm.toml`.
