@@ -241,7 +241,8 @@ tasks, so a local-model failure can be read as the model's limit rather than a h
 | `swarm clean [--branches]` | remove worktrees (and `agent/*`, `integration/*` branches, leftover sandbox containers) |
 | `swarm archlint [PATH] [--json]` | check a checkout (default: the target repo) against the target's architecture rules |
 | `swarm docker-build` | build the sandbox image from `docker/Dockerfile` |
-| `swarm studio [PROJECT] [-e ENGINE] [--window auto\|webview\|edge\|browser\|none] [--plan-file F]` | open Swarm Studio (below) |
+| `swarm studio [PROJECT] [-e ENGINE] [--chief NAME] [--window auto\|webview\|edge\|browser\|none] [--plan-file F]` | open Swarm Studio (below) |
+| `swarm mcp` | serve the harness to an MCP client on stdin/stdout: Claude Code, Claude Desktop or Antigravity as the chief (below) |
 
 Global options go before the command: `-t TARGET`, `-c CONFIG`, `--sandbox none|docker`.
 
@@ -280,8 +281,33 @@ all in the window. Design and decisions: [`docs/studio.md`](docs/studio.md).
   size, so Ollama never swaps models on the GPU.
 - **The chief is pluggable:** `Chief(backend)` takes any `ChiefBackend` (one structured
   `complete(system, user, schema)` call; `swarm/studio/chief.py`). `Ollama` is the local
-  backend. [`PLAN.md`](PLAN.md) phase C adds Claude or Antigravity as an optional chief;
-  the local model keeps writing the code.
+  backend. The local model keeps writing the code with every chief.
+- **Claude as the chief (optional, off by default):** `swarm studio --chief claude`, or
+  `chief = "claude"` under `[studio]`. `[chiefs.claude]` in `swarm.toml` names the model and
+  extra CLI flags. It runs the `claude` CLI (signed in, or `ANTHROPIC_API_KEY`) with no
+  tools, one call per plan step, the plan schema enforced with `--json-schema`. Every call is
+  metered: the chat shows what each plan cost and the project's running total, and
+  `state.json` keeps it (`chief_usage`). That is the number that decides whether the option
+  is worth its price against the local chief.
+
+## The harness as an MCP server: Claude Code or Antigravity as the chief
+
+`swarm mcp` serves the harness on stdin/stdout as an MCP server (plain JSON-RPC, no SDK).
+One entry connects Claude Code, Claude Desktop or Antigravity ([`docs/mcp.json`](docs/mcp.json)
+has it): the IDE becomes the chat and plan view, the local model does the coding through the
+harness, and the guard stays in charge. Tools:
+
+| Tool | Does |
+|---|---|
+| `list_targets`, `list_tasks`, `task` | read `swarm.toml`, the task folders, one task in full |
+| `plan_from_examples` | check a Studio plan (features, routes, example scenarios) and show the tasks and hidden tests it would generate; writes nothing |
+| `write_task` | create `tasks/<target>/<id>/` with `task.toml` and `acceptance/test_*.py`; refuses an id that exists |
+| `validate`, `run`, `integrate` | the CLI commands as jobs (they take minutes); each returns a job id |
+| `status`, `diff` | a job's log and result; the diff a passed run committed |
+
+There is deliberately no tool that edits a target's files or an existing task, and an unknown
+tool name is refused with that reason. The chief plans and reads; the harness and the local
+model do the work.
 
 ## Adding your own repo
 
@@ -387,9 +413,10 @@ names: `*` is one segment, `**` any number (including none).
 
 ```
 swarm/            harness (cli, runner, guard, verify, archlint, engines, sandbox, dispatch, git, config)
-swarm/studio/     Swarm Studio: plan + checks + codegen, chief, build loop, server, UI (static/)
+swarm/mcp.py      `swarm mcp`: the harness as an MCP server (Claude Code / Antigravity as the chief)
+swarm/studio/     Swarm Studio: plan + checks + codegen, chief (+ chief_claude), build loop, server, UI (static/)
 frames/webapp/    the studio's app frame (frames/webapp.toml: its harness target)
-swarm.toml        targets + engines + [sandbox] + [studio]
+swarm.toml        targets + engines + [sandbox] + [studio] + [chiefs.*]
 docker/           sandbox image (python 3.12, git, aider, pytest/ruff/mypy)
 config/           aider model settings (Ollama context sizes)
 demo/shopkit/     template for the demo target repo

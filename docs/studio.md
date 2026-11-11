@@ -88,7 +88,9 @@ is never shared.
   - `swarm/studio/`:
     - `plan.py`: the plan model, checks and code generation;
     - `chief.py`: the `ChiefBackend` protocol, the `Ollama` backend, the `Chief` (outline,
-      scenarios, retries, the same for every backend) and `FilePlanner`;
+      scenarios, retries, the same for every backend), `FilePlanner` and `Usage` (the meter);
+    - `chief_claude.py`: `ClaudeChief`, the optional backend on the `claude` CLI
+      (`--chief claude`), metered into the project's cost line;
     - `project.py`: state, the job thread, the build loop and review;
     - `server.py`: the API, the event stream and the token;
     - `preview.py`;

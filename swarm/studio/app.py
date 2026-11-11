@@ -19,8 +19,10 @@ import webbrowser
 from collections.abc import Callable
 from pathlib import Path
 
-from swarm.studio.chief import Chief, FilePlanner, Ollama
-from swarm.studio.project import Planner, Project, StudioSettings, open_project
+from swarm import config as config_mod
+from swarm.studio.chief import Chief, ChiefError, FilePlanner, Ollama
+from swarm.studio.chief_claude import ClaudeChief
+from swarm.studio.project import ChiefSpec, Planner, Project, StudioSettings, open_project
 from swarm.studio.server import StudioServer
 
 WINDOWS = ("auto", "webview", "edge", "browser", "none")
@@ -68,6 +70,32 @@ def _open_edge(url: str, profile: Path) -> None:
     proc.wait()
 
 
+def make_planner(
+    settings: StudioSettings,
+    chiefs: dict[str, ChiefSpec],
+    name: str | None = None,
+    plan_file: Path | None = None,
+) -> Planner:
+    """The planner for a project: a plan file, or the chief named by --chief / [studio] chief."""
+    if plan_file:
+        return FilePlanner(plan_file.resolve())
+    chosen = name or settings.chief
+    spec = chiefs.get(chosen)
+    if spec is None:
+        raise config_mod.ConfigError(
+            f"unknown chief {chosen!r}; swarm.toml defines [chiefs.*]: {', '.join(sorted(chiefs))}"
+        )
+    if spec.kind == "claude":
+        claude = ClaudeChief(model=spec.model, extra_args=spec.extra_args, timeout=spec.timeout)
+        try:
+            claude.preflight()
+        except ChiefError as exc:
+            raise config_mod.ConfigError(f"chief {chosen!r}: {exc}") from None
+        return Chief(claude)
+    model = spec.model or settings.chief_model
+    return Chief(Ollama(settings.ollama, model, settings.num_ctx, settings.num_predict))
+
+
 def _wait_forever(log: Callable[[str], None]) -> None:
     log("Press Ctrl+C to stop.")
     try:
@@ -85,17 +113,11 @@ def run(
     window: str,
     plan_file: Path | None = None,
     sandbox: str | None = None,
+    chief: str | None = None,
     log: Callable[[str], None] = print,
 ) -> int:
     settings = StudioSettings.load(config_path)
-    planner: Planner
-    if plan_file:
-        planner = FilePlanner(plan_file.resolve())
-    else:
-        backend = Ollama(
-            settings.ollama, settings.chief_model, settings.num_ctx, settings.num_predict
-        )
-        planner = Chief(backend)
+    planner = make_planner(settings, ChiefSpec.load_all(config_path), chief, plan_file)
     project: Project = open_project(
         project_name, planner, harness_config=config_path, engine=engine, sandbox=sandbox
     )

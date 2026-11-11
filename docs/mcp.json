@@ -1,0 +1,17 @@
+{
+  "_comment": "Copy the `mcpServers` entry into your project's .mcp.json (Claude Code, Antigravity) or Claude Desktop's config. Replace the directory and the config path. The server plans and reads; it never edits a target's files.",
+  "mcpServers": {
+    "swarm": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "E:/Playground_Projects/04_AgentSwarm",
+        "swarm",
+        "-c",
+        "E:/Playground_Projects/04_AgentSwarm/swarm.toml",
+        "mcp"
+      ]
+    }
+  }
+}

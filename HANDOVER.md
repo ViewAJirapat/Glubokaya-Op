@@ -1,6 +1,6 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-11-11 on `main` (Swarm Studio merged, PLAN.md phase S; the `studio` branch is history now) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
+**Updated:** 2026-11-11 on `main` (PLAN.md phases S and C: Studio merged, Claude or Antigravity as an optional chief) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
@@ -34,7 +34,21 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
 - The studio worktree `E:\Playground_Projects\04_AgentSwarm-studio` still exists; its
   `.venv` is the only one with pywebview (the `desktop` extra). The main checkout runs the
   studio too, in Edge app mode, with `uv run swarm studio`.
-- Health check now: 154 passed, 3 skipped (`pytest -q`), `ruff check .` and
+- **Phase C (2026-11-11, branch `feat/c`):** two optional chiefs, both off by default; the
+  local model writes the code with either.
+  - `swarm studio --chief claude` (or `chief = "claude"` under `[studio]`; `[chiefs.claude]`
+    names the model and flags): `swarm/studio/chief_claude.py` runs the `claude` CLI with no
+    tools and `--json-schema`, one call per plan step. Metered: each plan's cost and tokens
+    go into the chat and `state.json` (`chief_usage`). Needs a signed-in `claude` or
+    `ANTHROPIC_API_KEY`; `make_planner` says which is missing.
+  - `swarm mcp`: the harness as a stdio MCP server, ten tools, no edit tool
+    (`swarm/mcp.py`; the `.mcp.json` entry is in `docs/mcp.json`). Claude Code, Claude
+    Desktop or Antigravity becomes the chief: it writes tasks with hidden tests, runs the
+    local model, reads results and diffs, integrates.
+  - **Not run yet:** the comparison in PLAN.md (one wave with the Claude chief against the
+    local chief, tokens and pass rate side by side). It costs Claude tokens and the GPU;
+    ask the owner, then add the row to the cost table below.
+- Health check now: 176 passed, 3 skipped (`pytest -q`), `ruff check .` and
   `mypy --strict` clean.
 
 ### Cost lines (PLAN.md rule 5: the number the plan is judged by)

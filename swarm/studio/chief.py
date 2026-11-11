@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -341,6 +342,40 @@ class ChiefError(Exception):
     pass
 
 
+@dataclass
+class Usage:
+    """What a metered backend spent so far (the Claude chief); the project's cost line."""
+
+    calls: int = 0
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+    def add(self, result: dict[str, Any]) -> None:
+        """Count one `claude -p --output-format json` result object."""
+        self.calls += 1
+        self.cost_usd += float(result.get("total_cost_usd") or 0.0)
+        used = result.get("usage") or {}
+        if isinstance(used, dict):
+            for key in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"):
+                self.input_tokens += int(used.get(key) or 0)
+            self.output_tokens += int(used.get("output_tokens") or 0)
+
+    def since(self, mark: Usage) -> Usage:
+        return Usage(
+            self.calls - mark.calls,
+            self.cost_usd - mark.cost_usd,
+            self.input_tokens - mark.input_tokens,
+            self.output_tokens - mark.output_tokens,
+        )
+
+    def text(self) -> str:
+        return (
+            f"{self.calls} call(s), ${self.cost_usd:.4f}, "
+            f"{self.input_tokens} in / {self.output_tokens} out tokens"
+        )
+
+
 class ChiefBackend(Protocol):
     """What the chief needs from a planner model: one structured completion at a time.
 
@@ -455,6 +490,12 @@ class Chief:
     def __init__(self, backend: ChiefBackend) -> None:
         self.backend = backend
         self.label = backend.label
+
+    @property
+    def usage(self) -> Usage | None:
+        """The backend's meter, when it has one (the Claude chief); None for Ollama."""
+        found = getattr(self.backend, "usage", None)
+        return found if isinstance(found, Usage) else None
 
     def draft(
         self,
