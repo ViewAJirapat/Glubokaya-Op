@@ -18,6 +18,7 @@ current state (setup, decisions, dead ends, open issues), read [`HANDOVER.md`](H
 | 8 | Update and review the diagrams | 2026-10-25 | `873dd19`, `b098239` | 3 diagrams; 9 problems found and fixed |
 | 9 | Swarm Studio (branch `studio`) | 2026-11-01 | `eafeecd` .. `5ae72f0` | Chat, local chief plan, harness build, live preview in a desktop window |
 | 10 | Phase S: Studio on `main`, pluggable chief | 2026-11-11 | `d60ae99`, merge | `Chief(backend: ChiefBackend)`; `studio` merged with its history; cost lines in HANDOVER |
+| 11 | Phase C: Claude chief, `swarm mcp` | 2026-11-11 | `501a223` .. | Claude as an optional metered chief; the harness as an MCP server for Claude Code / Antigravity |
 
 ### 0. The blueprint
 
@@ -137,6 +138,31 @@ doing nothing. The fixes are listed in the README under "What changed from the b
   waves). Lesson from filling it: the Programtour waves were planned by Claude, so only the
   todo demo measures the local chief; and no Claude tokens were recorded, so phase B's
   counters come before any comparison means much.
+
+### 11. Phase C: Claude or Antigravity as an optional chief (2026-11-11)
+
+- **What:** two ways for a stronger planner to drive the harness, both off by default; the
+  local model keeps writing the code with either.
+  - `swarm/studio/chief_claude.py`: `ClaudeChief`, a `ChiefBackend` on the `claude` CLI with
+    no tools and `--json-schema`; `[chiefs.*]` in `swarm.toml`, `swarm studio --chief NAME`.
+    `Usage` meters every call; `Project._record_usage` adds it to `state.chief_usage` and
+    says it in the chat after each plan.
+  - `swarm/mcp.py`: `swarm mcp`, a stdio MCP server with ten tools (read, check a plan, write
+    a new task, run, poll, diff, integrate). Long commands are jobs polled with `status`.
+- **Decisions found while doing it:**
+  - The system text rides on stdin above the request, not in `--system-prompt`: the npm
+    install of `claude` on Windows is a `.cmd` shim, and a batch file cuts an argument at its
+    first newline. The test's fake `claude` is such a shim and caught it.
+  - `validate`, `run` and `integrate` return a job id instead of blocking: an MCP call that
+    takes 20 minutes would time out in every client.
+  - No edit tool, and the refusal names the rule. `write_task` refuses an id that exists, so
+    nothing can rewrite a task's hidden tests through the server.
+- **Tests:** `tests/agents/fake_claude.py` on PATH (answers from a file, calls logged);
+  `tests/test_studio_chief_claude.py` (the backend, the config, a project's cost line);
+  `tests/test_mcp.py` (a scripted client, one call per tool, every edit name refused, the
+  newline-delimited transport). `swarm mcp` was also driven by hand over a real pipe.
+- **Not done:** the cost-line comparison (one wave with the Claude chief against the local
+  chief). It spends real Claude tokens and the GPU, so it waits for the owner's OK.
 
 ## Part 2: how to develop it
 

@@ -47,7 +47,7 @@ gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
 | Phase | What | Effect on Claude tokens | Size |
 |---|---|---|---|
 | S | Merge `studio` into `main`; a pluggable chief | planning leaves Claude | done 2026-11-11 |
-| C | Connect Claude or Antigravity as an optional chief | a stronger planner on demand, metered | 1-2 days |
+| C | Connect Claude or Antigravity as an optional chief | a stronger planner on demand, metered | done 2026-11-11 (comparison run pending) |
 | A | Protected CONTRACT blocks in the harness | fewer failed runs to diagnose | 1 day |
 | B | Context-budget check and token counts | no silent overflows; the cost line gets numbers | 1-2 days |
 | L | Task lint | prompt mistakes caught before a 20-minute run | 1 day |
@@ -80,7 +80,13 @@ demo. HANDOVER section 0 has the table.
 5. Cost line: the Studio todo demo (local chief) and the two Programtour waves (10 tasks,
    Claude as chief) in one table.
 
-### Phase C: Claude or Antigravity as an optional chief
+### Phase C: Claude or Antigravity as an optional chief (done 2026-11-11)
+
+Built as written (`501a223`), with three changes found while doing it: the system text goes
+on stdin, not in `--system-prompt` (a `.cmd` shim on Windows cuts an argument at its first
+newline); `validate`, `run` and `integrate` are jobs polled with `status`, since a 20-minute
+MCP call would time out; `[chiefs.claude]` has `timeout` too. The cost-line comparison at
+the end is not run yet: it spends Claude tokens and the GPU, so it waits for the owner.
 
 Two ways to connect, both off by default. The local 14B keeps writing the code in both;
 only the planner changes. The owner picks per project in Studio's settings or with
