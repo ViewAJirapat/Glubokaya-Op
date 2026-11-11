@@ -278,6 +278,10 @@ all in the window. Design and decisions: [`docs/studio.md`](docs/studio.md).
 - **No GPU:** `--plan-file tests/studio/todo_plan.json` uses a saved plan instead of the chief.
 - **Settings:** `[studio]` in `swarm.toml`. The chief uses the worker's model and context
   size, so Ollama never swaps models on the GPU.
+- **The chief is pluggable:** `Chief(backend)` takes any `ChiefBackend` (one structured
+  `complete(system, user, schema)` call; `swarm/studio/chief.py`). `Ollama` is the local
+  backend. [`PLAN.md`](PLAN.md) phase C adds Claude or Antigravity as an optional chief;
+  the local model keeps writing the code.
 
 ## Adding your own repo
 

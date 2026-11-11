@@ -1,6 +1,6 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-11-02 on branch `studio` (section 0; `main` was last updated 2026-10-25) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
+**Updated:** 2026-11-11 on `main` (Swarm Studio merged, PLAN.md phase S; the `studio` branch is history now) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
@@ -11,7 +11,7 @@ This is for whoever continues development **on another PC**, human or AI, with n
 
 ---
 
-## 0. Work in progress: Swarm Studio (branch `studio`, 2026-11-01, updated 2026-11-02)
+## 0. Swarm Studio (built on branch `studio` 2026-11-01/02, merged into `main` 2026-11-11)
 
 A desktop app like Google Antigravity, built on the harness:
 1. you describe an app in a chat;
@@ -22,19 +22,44 @@ A desktop app like Google Antigravity, built on the harness:
 You watch the plan, the tasks, live logs, diffs and a live preview. Design and decisions:
 [`docs/studio.md`](docs/studio.md).
 
-### Shutdown checkpoint (2026-11-02): resume here
+### Status (2026-11-11): on `main`, phase S of [`PLAN.md`](PLAN.md) done
+
+- `studio` was merged into `main` with a merge commit (not rebased: the commit hashes cited
+  in this file and in `DEVELOPMENT.md` stay valid). Not pushed; the owner decides.
+- **The chief is pluggable:** `Chief(backend: ChiefBackend)` in `swarm/studio/chief.py`.
+  A backend is one `complete(system, user, schema, progress) -> JSON` call and a `label`;
+  `Ollama` is the local one, and the chief's outline, scenarios and retries are the same
+  for every backend. Phase C adds a Claude backend and an MCP server so Claude Code or
+  Antigravity can be the chief; the local 14B keeps writing the code either way.
+- The studio worktree `E:\Playground_Projects\04_AgentSwarm-studio` still exists; its
+  `.venv` is the only one with pywebview (the `desktop` extra). The main checkout runs the
+  studio too, in Edge app mode, with `uv run swarm studio`.
+- Health check now: 154 passed, 3 skipped (`pytest -q`), `ruff check .` and
+  `mypy --strict` clean.
+
+### Cost lines (PLAN.md rule 5: the number the plan is judged by)
+
+| Wave | Chief | Tasks | Model wrote | Claude | Failed runs that needed Claude |
+|---|---|---|---|---|---|
+| Studio todo demo, 2026-11-02 | local 14B | 3 features | +31 / -7 | none for planning or specs (Claude built the studio itself) | 0 for the specs; 1 retry after the harness got the CONTRACT-restore autofix (02-todo-edit) |
+| Programtour wave 1, 2026-11-02 | Claude (head chief: specs, hidden tests, review) | 5 | +156 / -135 | not metered (one Claude session; before this table existed) | 1 (pt-03: the spec needed the exact loop) |
+| Programtour wave 2, 2026-11-02 | Claude | 5 | +88 / -73 | not metered | 1 (pt-06: the spec needed the exact loop) |
+
+Honest reading: the only wave planned without Claude is the todo demo. The Programtour
+waves are ChatBook's pattern (Claude plans, the model codes); their token cost was not
+recorded, which is what phase B's counters and this table fix from now on.
+
+### Shutdown checkpoint (2026-11-02, kept for the history; see Status above)
 
 The owner turned the PC off here. Nothing was lost:
-- **Git:** all work is committed on `studio` (this commit is the latest), and the tree is
-  clean. It is not pushed and not merged. `main` is untouched (`a916d24`).
+- **Git:** all work was committed on `studio`; it is now merged into `main` (see Status).
 - **Running at shutdown:**
   - no GPU job and no Ollama call from this work;
   - only the native studio window on the `todo` project, which just closes. That window
     ran the code from *before* the review fixes; the next start uses the fixed code.
 - **The `todo` project** (`work/studio/todo/`, git-ignored): built 3/3, with `state.json`
   saved. The preview's data lived in memory, so it starts empty, as designed.
-- **The owner decides:** whether to merge `studio` into `main`, and whether to push. Don't
-  do either without being asked.
+- **The owner decides** whether to push. Don't push without being asked.
 
 After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktree's own
 `.venv`, never the main checkout's):
@@ -72,7 +97,8 @@ After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktr
 - **Done:**
   - the frame `frames/webapp`, with `frames/webapp.toml`;
   - the plan, its checks and code generation (`swarm/studio/plan.py`);
-  - the Ollama chief (`chief.py`);
+  - the chief (`chief.py`): the `ChiefBackend` protocol, the `Ollama` backend, `Chief`
+    (outline, scenarios, retries) and `FilePlanner`;
   - the project and the build loop with review (`project.py`);
   - the server, the UI, the preview and `swarm studio`;
   - the worker engine `studio-14b`: `local-14b-arch` without the repo map;
@@ -125,7 +151,7 @@ After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktr
   3. UI tasks written by the model, which need a headless DOM runner for hidden tests
      (ChatBook's `uirun.js` pattern).
   4. A persistent store, so the preview keeps its data across restarts.
-  5. Merge or push only when the owner asks.
+  5. Push only when the owner asks (merged 2026-11-11).
 - **Ask first:** GPU jobs. Other sessions (ChatBook) share the one GPU; check `/api/ps` and
   ask before a long run.
 - **pywebview:** installed 2026-11-01, with the owner's OK, as the optional `desktop` extra

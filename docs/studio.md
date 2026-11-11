@@ -11,7 +11,7 @@ Started with `uv run swarm studio [PROJECT]` (branch `studio`).
 
 | Question | Decision | Why |
 |---|---|---|
-| Who plans? | **Local qwen2.5-coder:14b, strict JSON plan.** The planner is pluggable (`Planner` protocol); a cloud chief can be added later. | The repo is a fallback for when Claude limits run out. It's the worker's model too, so the GPU never swaps models. |
+| Who plans? | **Local qwen2.5-coder:14b, strict JSON plan.** The planner is pluggable (`Planner` protocol), and inside the `Chief` the model call is too (`ChiefBackend`: `Ollama` today, a Claude backend in PLAN.md phase C). | The repo is a fallback for when Claude limits run out. It's the worker's model too, so the GPU never swaps models. |
 | What form? | **Desktop app**: a native window (pywebview on the WebView2 runtime built into Windows 11), else an Edge app-mode window. The backend is stdlib Python. | Small downloads: about 1.2 MB for pywebview, or nothing with Edge. Electron and Tauri are 100 MB to several GB. |
 | First demo? | **A tiny todo list.** | Small, stateful and obviously checkable in a preview. |
 
@@ -87,7 +87,8 @@ is never shared.
     start, committed only if the frame's gates pass;
   - `swarm/studio/`:
     - `plan.py`: the plan model, checks and code generation;
-    - `chief.py`: the Ollama planner and `FilePlanner`;
+    - `chief.py`: the `ChiefBackend` protocol, the `Ollama` backend, the `Chief` (outline,
+      scenarios, retries, the same for every backend) and `FilePlanner`;
     - `project.py`: state, the job thread, the build loop and review;
     - `server.py`: the API, the event stream and the token;
     - `preview.py`;
