@@ -128,11 +128,18 @@ class Mounts:
 
 
 class HostBox(Box):
-    """v0 behaviour: commands run as the current user with a scrubbed environment."""
+    """v0 behaviour: commands run as the current user with a scrubbed environment.
+    {python} is the harness's interpreter, or the target's own (`python` in its table)."""
 
     kind = "none"
-    python = sys.executable
     pathsep = os.pathsep
+
+    def __init__(self, python: str = sys.executable) -> None:
+        self.python = python
+
+    def preflight(self) -> None:
+        if not Path(self.python).is_file():
+            raise SandboxError(f"the target's python does not exist: {self.python}")
 
     def exe(self, name: str) -> str | None:
         return shutil.which(name)
@@ -399,6 +406,8 @@ class DockerBox(Box):
 def make_box(cfg: Config, target: Target) -> Box:
     if target.sandbox == "docker":
         return DockerBox(cfg.sandbox, cfg.runs_dir / ".sandbox", label=target.name)
+    if target.python:
+        return HostBox(str(target.python))
     return HOST
 
 

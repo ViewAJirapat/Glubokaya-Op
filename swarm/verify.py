@@ -49,12 +49,15 @@ def display(cmd: list[str]) -> str:
 
 
 def short_name(name: str) -> str:
-    """'python -m ruff format --check .' -> 'ruff format'; for progress lines."""
+    """'python -m ruff format --check .' -> 'ruff format' and
+    'python app/manage.py check' -> 'manage.py check'; for progress lines."""
     if name == "hidden acceptance tests":
         return "acceptance"
     if name == ARCHITECTURE:
         return "architecture"
     words = name.removeprefix("python -m ").split()
+    if words[:1] == ["python"] and len(words) > 1:  # a script: name it by its file
+        words = [words[1].replace("\\", "/").rsplit("/", 1)[-1], *words[2:]]
     return " ".join(w for w in words[:2] if not w.startswith("-") and w != ".")
 
 

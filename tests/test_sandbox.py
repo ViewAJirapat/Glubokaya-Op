@@ -9,7 +9,10 @@ import importlib.metadata
 import os
 import re
 import subprocess
+import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -22,11 +25,15 @@ from swarm.sandbox import (
     CHECK,
     DOCKER_DIR,
     GATES_PYTHON,
+    HOST,
     DockerBox,
+    HostBox,
     Mount,
+    SandboxError,
     build_command,
     container_git_config,
     container_url,
+    make_box,
     mount_arg,
 )
 from swarm.task import find_tasks
@@ -210,6 +217,79 @@ def test_sandbox_config() -> None:
     raw["sandbox"] = {"memroy": "2g"}
     with pytest.raises(config.ConfigError, match="memroy"):
         config.from_dict(raw, ROOT)
+
+
+# ---------------------------------------------------------------------------
+# a target's own interpreter (host box)
+# ---------------------------------------------------------------------------
+class RecordingHostBox(HostBox):
+    """A host box that records argv instead of running it; the import check's probe gets a
+    module path inside the worktree."""
+
+    def __init__(self, python: str) -> None:
+        super().__init__(python)
+        self.calls: list[list[str]] = []
+
+    def run(
+        self,
+        argv: Sequence[str],
+        wt: Path,
+        *,
+        role: str,
+        timeout: float,
+        env: Mapping[str, str] | None = None,
+        pass_env: Sequence[str] = (),
+        mounts: Sequence[Mount] = (),
+        stdin_text: str | None = None,
+    ) -> CmdResult:
+        self.calls.append(list(argv))
+        return CmdResult(list(argv), 0, f"{wt / 'src' / 'shopkit' / '__init__.py'}\n", 0.0)
+
+
+def test_target_python_config(tmp_path: Path) -> None:
+    raw: dict[str, Any] = {
+        "targets": {"t": {"repo": "r", "verify": [["true"]], "python": "venv/Scripts/python.exe"}},
+        "engines": {"e": {"kind": "oracle"}},
+    }
+    cfg = config.from_dict(raw, tmp_path)
+    target = cfg.target("t")
+    assert target.python == (tmp_path / "venv" / "Scripts" / "python.exe").resolve()
+    box = make_box(cfg, target)
+    assert isinstance(box, HostBox) and box.kind == "none"
+    assert box.python == str(target.python)
+    assert HOST.python == sys.executable  # the shared default box is unchanged
+    with pytest.raises(SandboxError, match="does not exist"):
+        box.preflight()  # dispatch and the studio call this before any worktree is made
+
+    raw["targets"]["t"]["sandbox"] = "docker"
+    with pytest.raises(config.ConfigError, match="python is for the host"):
+        config.from_dict(raw, tmp_path)
+
+    del raw["targets"]["t"]["python"]
+    raw["targets"]["t"]["sandbox"] = "none"
+    plain = config.from_dict(raw, tmp_path)
+    assert plain.target("t").python is None
+    assert make_box(plain, plain.target("t")) is HOST
+
+
+def test_target_python_runs_the_checks(cfg: Config, tmp_path: Path) -> None:
+    target = cfg.target(None)
+    wt = worktree(cfg, tmp_path)
+    python = str(tmp_path / "py310" / "python.exe")
+    box = RecordingHostBox(python)
+    task = find_tasks(target.tasks_dir, ["demo-001"])[0]
+    work = tmp_path / "iter-1"
+    work.mkdir()
+
+    assert verify.import_check(wt, target, box) is None
+    verify.run_autofix(wt, target, 60, box)
+    verify.run_gates(wt, target, 60, box)
+    verify.run_acceptance(wt, task, target, work, 60, box=box)
+
+    expected = 1 + len(target.autofix) + len(target.verify) + 1
+    assert len(box.calls) == expected
+    assert all(argv[0] == python for argv in box.calls)
+    assert "{python}" not in {part for argv in box.calls for part in argv}
 
 
 # ---------------------------------------------------------------------------

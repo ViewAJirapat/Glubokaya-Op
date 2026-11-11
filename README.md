@@ -241,8 +241,47 @@ tasks, so a local-model failure can be read as the model's limit rather than a h
 | `swarm clean [--branches]` | remove worktrees (and `agent/*`, `integration/*` branches, leftover sandbox containers) |
 | `swarm archlint [PATH] [--json]` | check a checkout (default: the target repo) against the target's architecture rules |
 | `swarm docker-build` | build the sandbox image from `docker/Dockerfile` |
+| `swarm studio [PROJECT] [-e ENGINE] [--window auto\|webview\|edge\|browser\|none] [--plan-file F]` | open Swarm Studio (below) |
 
 Global options go before the command: `-t TARGET`, `-c CONFIG`, `--sandbox none|docker`.
+
+## Swarm Studio: describe an app, watch it get built
+
+`uv run swarm studio` opens a desktop window, in the spirit of Google Antigravity:
+
+1. In the chat, describe a small app.
+2. A local **chief** (qwen2.5-coder:14b in Ollama) plans it as data: features, routes, page
+   sections, and example requests with their expected replies.
+3. You approve the plan or comment on it.
+4. Plain code turns the approved plan into:
+   - stubs with a CONTRACT docstring;
+   - harness tasks;
+   - **hidden acceptance tests**, made from the examples.
+5. The worker engine (`studio-14b`: `local-14b-arch` without the repo map) builds one
+   feature at a time through `run_task`.
+6. Each feature that passes is reviewed with `integrate`, merged to the app's `main`, and
+   shown in a **live preview**.
+
+The plan view, the task list, live logs, diffs and each attempt's prompt and feedback are
+all in the window. Design and decisions: [`docs/studio.md`](docs/studio.md).
+
+- The app is built on a protected frame (`frames/webapp`): a JSON API with an in-memory
+  store and a page made of declared sections. The model writes only the feature handlers,
+  one file each.
+- Projects live in `work/studio/<name>/`:
+  - `app/`: the app's repo;
+  - `tasks/`: the hidden tests, outside the repo;
+  - `runs/`, `logs/`, `state.json`.
+- **The window:** pywebview, installed with `uv sync --extra desktop` (about 1.2 MB with its
+  dependencies; it uses the WebView2 runtime built into Windows 11). Without it, Edge in app
+  mode, else the default browser.
+- **No GPU:** `--plan-file tests/studio/todo_plan.json` uses a saved plan instead of the chief.
+- **Settings:** `[studio]` in `swarm.toml`. The chief uses the worker's model and context
+  size, so Ollama never swaps models on the GPU.
+- **The chief is pluggable:** `Chief(backend)` takes any `ChiefBackend` (one structured
+  `complete(system, user, schema)` call; `swarm/studio/chief.py`). `Ollama` is the local
+  backend. [`PLAN.md`](PLAN.md) phase C adds Claude or Antigravity as an optional chief;
+  the local model keeps writing the code.
 
 ## Adding your own repo
 
@@ -348,7 +387,9 @@ names: `*` is one segment, `**` any number (including none).
 
 ```
 swarm/            harness (cli, runner, guard, verify, archlint, engines, sandbox, dispatch, git, config)
-swarm.toml        targets + engines + [sandbox]
+swarm/studio/     Swarm Studio: plan + checks + codegen, chief, build loop, server, UI (static/)
+frames/webapp/    the studio's app frame (frames/webapp.toml: its harness target)
+swarm.toml        targets + engines + [sandbox] + [studio]
 docker/           sandbox image (python 3.12, git, aider, pytest/ruff/mypy)
 config/           aider model settings (Ollama context sizes)
 demo/shopkit/     template for the demo target repo
@@ -362,5 +403,6 @@ third_party/      Aider.zip: unmodified Aider v0.86.2 source snapshot (see third
 HANDOVER.md       developer handover: status, decisions, failed approaches, new-PC steps
 DEVELOPMENT.md    how the repo was built, step by step, and the steps to develop it
 docs/diagrams/    workflow diagrams (overview.svg, task-loop.svg, parallel.svg)
+docs/studio.md    Swarm Studio design
 work/ .worktrees/ runs/ models/   generated or downloaded, git-ignored
 ```

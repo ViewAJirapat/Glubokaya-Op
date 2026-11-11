@@ -16,6 +16,8 @@ current state (setup, decisions, dead ends, open issues), read [`HANDOVER.md`](H
 | 6 | Architecture gate, task scope, `shopapi` | 2026-10-25 | `8d7bc7a` | Parallel tasks merge without conflicts |
 | 7 | Review before pushing | 2026-10-24/25 | (in `8d7bc7a`) | 49 confirmed problems found and fixed |
 | 8 | Update and review the diagrams | 2026-10-25 | `873dd19`, `b098239` | 3 diagrams; 9 problems found and fixed |
+| 9 | Swarm Studio (branch `studio`) | 2026-11-01 | `eafeecd` .. `5ae72f0` | Chat, local chief plan, harness build, live preview in a desktop window |
+| 10 | Phase S: Studio on `main`, pluggable chief | 2026-11-11 | `d60ae99`, merge | `Chief(backend: ChiefBackend)`; `studio` merged with its history; cost lines in HANDOVER |
 
 ### 0. The blueprint
 
@@ -93,6 +95,48 @@ doing nothing. The fixes are listed in the README under "What changed from the b
 - **What:** both diagrams updated for scope and import rules; a third, `parallel.svg`, shows
   parallel tasks merged without conflicts. A review (11 agents) then found 9 claims that were
   wrong or too strong, such as "commits exactly what passed" outside Docker. All 9 were fixed.
+
+### 9. Swarm Studio (branch `studio`, from `eafeecd`)
+
+- **What:** `swarm studio`, a desktop app in the spirit of Google Antigravity, built on the
+  harness:
+  1. the owner describes an app in a chat;
+  2. a local chief (qwen2.5-coder:14b) plans it as data;
+  3. the owner approves or comments;
+  4. the worker builds it through `run_task`, feature by feature;
+  5. each passing feature is reviewed with `integrate` and shown in a live preview.
+- **Owner's decisions:**
+  - the chief is local, with a strict JSON plan;
+  - the form is a desktop window (pywebview, else Edge app mode);
+  - the first demo is a todo list.
+- **Why it can work with a 14B planner:** ChatBook showed the 14B codes well from an exact
+  spec in one small file against a protected frame. So the studio keeps the chief's job small:
+  - a fixed frame (`frames/webapp`);
+  - a plan the model only fills in, forced to a schema by Ollama;
+  - checks in plain code, which keep Approve disabled until they pass;
+  - stubs and hidden tests generated from the plan by plain code, never written by the model.
+- **Lessons:**
+  - On Windows, Python's HTTP servers set `SO_REUSEADDR`, which let the studio share a busy
+    port with another app (HANDOVER 2b #14).
+  - 8k context: the worker runs without Aider's repo map (`studio-14b`), as ChatBook did.
+- Design: [`docs/studio.md`](docs/studio.md).
+
+### 10. Phase S: Studio on `main`, pluggable chief (2026-11-11)
+
+- **What:** the first phase of [`PLAN.md`](PLAN.md), whose measure is Claude tokens per
+  feature shipped. `main` was merged into `studio` (only `PLAN.md` and `suggest.md` had
+  changed), the suite ran in the studio venv, and `studio` was merged into `main`.
+- **Why a merge, not the rebase the plan named:** a rebase rewrites the 13 studio commits,
+  and HANDOVER and this file cite them by hash. The core/desktop split the plan asked for
+  already exists in that history (`398c608` is the desktop extra on its own).
+- **The refactor** (`d60ae99`): `Chief(llm: Ollama)` became `Chief(backend: ChiefBackend)`, a
+  `Protocol` with `label` and `complete(system, user, schema, progress)`. The Ollama code moved
+  behind it unchanged. Tests: the scripted fakes now override `complete`, and one test passes a
+  plain object with no Ollama inheritance.
+- **Cost lines:** HANDOVER section 0 has the first table (the todo demo, the two Programtour
+  waves). Lesson from filling it: the Programtour waves were planned by Claude, so only the
+  todo demo measures the local chief; and no Claude tokens were recorded, so phase B's
+  counters come before any comparison means much.
 
 ## Part 2: how to develop it
 

@@ -1,6 +1,6 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-10-25 · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op`, branch `main` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
+**Updated:** 2026-11-11 on `main` (Swarm Studio merged, PLAN.md phase S; the `studio` branch is history now) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
@@ -8,6 +8,269 @@ This is for whoever continues development **on another PC**, human or AI, with n
 - **Before changing anything:** read sections 2 and 3. Every "don't" in section 2b cost real time to discover.
 - **Workflow diagrams:** [`docs/diagrams/overview.svg`](docs/diagrams/overview.svg) (how the parts connect), [`docs/diagrams/task-loop.svg`](docs/diagrams/task-loop.svg) (what the harness does per task) and [`docs/diagrams/parallel.svg`](docs/diagrams/parallel.svg) (parallel tasks merged without conflicts).
 - **Owner's rule:** keep this file current at every checkpoint (before long jobs, after each step), because Claude usage limits can stop a session without warning.
+
+---
+
+## 0. Swarm Studio (built on branch `studio` 2026-11-01/02, merged into `main` 2026-11-11)
+
+A desktop app like Google Antigravity, built on the harness:
+1. you describe an app in a chat;
+2. a local chief model plans it;
+3. you approve the plan;
+4. the local worker builds it, feature by feature, through `run_task`.
+
+You watch the plan, the tasks, live logs, diffs and a live preview. Design and decisions:
+[`docs/studio.md`](docs/studio.md).
+
+### Status (2026-11-11): on `main`, phase S of [`PLAN.md`](PLAN.md) done
+
+- `studio` was merged into `main` with a merge commit (not rebased: the commit hashes cited
+  in this file and in `DEVELOPMENT.md` stay valid). Not pushed; the owner decides.
+- **The chief is pluggable:** `Chief(backend: ChiefBackend)` in `swarm/studio/chief.py`.
+  A backend is one `complete(system, user, schema, progress) -> JSON` call and a `label`;
+  `Ollama` is the local one, and the chief's outline, scenarios and retries are the same
+  for every backend. Phase C adds a Claude backend and an MCP server so Claude Code or
+  Antigravity can be the chief; the local 14B keeps writing the code either way.
+- The studio worktree `E:\Playground_Projects\04_AgentSwarm-studio` still exists; its
+  `.venv` is the only one with pywebview (the `desktop` extra). The main checkout runs the
+  studio too, in Edge app mode, with `uv run swarm studio`.
+- Health check now: 154 passed, 3 skipped (`pytest -q`), `ruff check .` and
+  `mypy --strict` clean.
+
+### Cost lines (PLAN.md rule 5: the number the plan is judged by)
+
+| Wave | Chief | Tasks | Model wrote | Claude | Failed runs that needed Claude |
+|---|---|---|---|---|---|
+| Studio todo demo, 2026-11-02 | local 14B | 3 features | +31 / -7 | none for planning or specs (Claude built the studio itself) | 0 for the specs; 1 retry after the harness got the CONTRACT-restore autofix (02-todo-edit) |
+| Programtour wave 1, 2026-11-02 | Claude (head chief: specs, hidden tests, review) | 5 | +156 / -135 | not metered (one Claude session; before this table existed) | 1 (pt-03: the spec needed the exact loop) |
+| Programtour wave 2, 2026-11-02 | Claude | 5 | +88 / -73 | not metered | 1 (pt-06: the spec needed the exact loop) |
+
+Honest reading: the only wave planned without Claude is the todo demo. The Programtour
+waves are ChatBook's pattern (Claude plans, the model codes); their token cost was not
+recorded, which is what phase B's counters and this table fix from now on.
+
+### Shutdown checkpoint (2026-11-02, kept for the history; see Status above)
+
+The owner turned the PC off here. Nothing was lost:
+- **Git:** all work was committed on `studio`; it is now merged into `main` (see Status).
+- **Running at shutdown:**
+  - no GPU job and no Ollama call from this work;
+  - only the native studio window on the `todo` project, which just closes. That window
+    ran the code from *before* the review fixes; the next start uses the fixed code.
+- **The `todo` project** (`work/studio/todo/`, git-ignored): built 3/3, with `state.json`
+  saved. The preview's data lived in memory, so it starts empty, as designed.
+- **The owner decides** whether to push. Don't push without being asked.
+
+After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktree's own
+`.venv`, never the main checkout's):
+1. **Health check:** `.venv\Scripts\python.exe -m pytest -q`. Expect 145 passed and 3
+   skipped (the usual Windows skips). Then `ruff check .` and `mypy --strict` must be clean.
+   Don't run `ruff format .` at the root; see 2b #15.
+2. **Without the GPU:** `.venv\Scripts\python.exe -m swarm -c work/dev-swarm.toml studio demo
+   --plan-file tests/studio/todo_plan.json -e solver`. Both the planner and the worker are
+   scripted. `work/dev-swarm.toml` is a git-ignored local copy of `swarm.toml` with the test
+   engines (`solver`, `noop`, `broken`) and `projects_dir = "studio-dev"`. Recreate it from
+   `tests/studio_helpers.py` if it's gone.
+3. **With the GPU:** first make sure Ollama is up (`curl http://localhost:11434/api/ps`)
+   and that no other session (ChatBook) is using the GPU. Ask the owner before a long run.
+   - Open the built app: `.venv\Scripts\python.exe -m swarm studio todo`.
+   - Start a new app: `swarm studio <new-name>`.
+   - The project's frame update runs the frame's gates first, so the review fixes reach
+     `todo` safely.
+4. **If uv is needed:** use `uv run --extra desktop ...` so pywebview stays installed. From a
+   Claude session, set `UV_CACHE_DIR` to `work/.uv-cache` (C: is nearly full).
+5. **Then:** "Next" below.
+
+- **Where:** branch `studio`, in the worktree `E:\Playground_Projects\04_AgentSwarm-studio`.
+  - It has its own `.venv`. Other projects use the main checkout and its venv, so don't run
+    `uv sync` there for this.
+  - Not pushed.
+- **Owner's decisions:**
+  - chief: local qwen2.5-coder:14b, with a strict JSON plan;
+  - form: a desktop window (pywebview, else Edge app mode);
+  - first demo: a todo list.
+- **Run it:** `uv run swarm studio [PROJECT]` (default project `todo`).
+  - `--window none|browser|edge|webview`.
+  - `--plan-file tests/studio/todo_plan.json` skips the chief model. The worker still uses
+    the GPU unless `-e` names a scripted engine (see the checkpoint above).
+  - Projects live in `work/studio/<name>/`.
+- **Done:**
+  - the frame `frames/webapp`, with `frames/webapp.toml`;
+  - the plan, its checks and code generation (`swarm/studio/plan.py`);
+  - the chief (`chief.py`): the `ChiefBackend` protocol, the `Ollama` backend, `Chief`
+    (outline, scenarios, retries) and `FilePlanner`;
+  - the project and the build loop with review (`project.py`);
+  - the server, the UI, the preview and `swarm studio`;
+  - the worker engine `studio-14b`: `local-14b-arch` without the repo map;
+  - `tools/restore_contracts.py` in the frame: an autofix that puts a deleted or misplaced
+    CONTRACT back on top. `Project.update_frame()` brings existing projects' frame files up to
+    date on start; it never touches features, `ui.json` or the CONTRACT snapshots;
+  - 51 tests: `tests/test_studio.py` (scripted planner and worker),
+    `tests/test_studio_chief.py` (scripted model) and `tests/test_studio_review.py` (the
+    review's regressions). The frame has its own 21.
+- **Verified:**
+  - **Harness checks:** `pytest` passes; see the last commit message for the latest count.
+    `ruff` and `mypy --strict` are clean.
+  - **The real end-to-end run (2026-11-02, owner's OK, GPU free):** the local 14B chief and
+    worker built the todo app from one chat message.
+    - The plan took about 3 min: 3 features, 0 problems, 9 hidden scenarios.
+    - 01-todos passed on attempt 1 (73 s).
+    - 02-todo-edit failed 4/4 although its hidden tests passed from attempt 1. The model
+      deleted the CONTRACT docstring, then kept moving it below the imports, so the frame's
+      contract test failed. The inputs were fixed (the restore autofix, the frame update) and
+      Retry passed on attempt 1 (83 s).
+    - 03-todo-stats passed on attempt 1 (62 s).
+    - The app worked in the preview: add, tick, remove, counts. The native window opened.
+    - Every feature commit is by `swarm-agent`; no model code was edited by hand.
+    - Screenshots and the numbers are in [`docs/studio-demo/`](docs/studio-demo/README.md).
+  - **In the browser, with the scripted planner and worker:**
+    - chat, the plan artifact, then approve;
+    - 3 tasks passed review;
+    - the preview runs the merged todo app (add, tick, counts);
+    - the diff, attempts and prompt viewers work.
+  - **The failure path, with the `noop` worker:**
+    - the task fails after 4 attempts and the build pauses;
+    - Retry and Skip appear in the chat and in the task view.
+  - **pywebview:** a hidden WebView2 window loaded the studio and ran its JavaScript.
+  - **Real chief:** the 14B planned the todo app in about 2-3 min, with 0 problems.
+- **Review (2026-11-02):** a multi-agent review of the branch at `9d28069` (6 reviewers; 2
+  skeptics per finding, a third on a split) confirmed 23 problems. All are fixed.
+  - Regression tests are in `tests/test_studio_review.py` and the frame's tests.
+  - Summary: [`docs/studio.md`](docs/studio.md), "Review".
+  - The first attempt hit a usage limit: 5 reviewers and every verifier failed. Its "refuted"
+    list was only failed verifiers counted as refutations. The workflow now reports those
+    as "unverified".
+  - The UI fixes were checked in the browser: a build that can't start pauses with the
+    reason and offers Resume; Resume builds; the diff view follows a task to "passed"
+    (`docs/studio-demo/review-01-build-cannot-start.jpg`).
+- **Next (ideas, not started):**
+  1. Re-run a fresh project end to end with the restore autofix in place from the start, to
+     confirm 02 then passes without a retry. One run is a direction, not a verdict.
+  2. A second demo app that isn't a todo list (the chief's few-shot example is a reading list,
+     so todo-like plans come easily).
+  3. UI tasks written by the model, which need a headless DOM runner for hidden tests
+     (ChatBook's `uirun.js` pattern).
+  4. A persistent store, so the preview keeps its data across restarts.
+  5. Push only when the owner asks (merged 2026-11-11).
+- **Ask first:** GPU jobs. Other sessions (ChatBook) share the one GPU; check `/api/ps` and
+  ask before a long run.
+- **pywebview:** installed 2026-11-01, with the owner's OK, as the optional `desktop` extra
+  (`uv sync --extra desktop`). It went into the studio worktree's venv only:
+  - packages: pywebview 6.2.1, pythonnet, clr_loader, cffi, pycparser, bottle and
+    proxy_tools;
+  - the uv cache for it is `work/.uv-cache` on E: (21 MB). That includes build-only tools
+    (setuptools, hatchling) for building `proxy_tools` and the local project from source.
+  - `uv.lock` also lists macOS and OpenBSD-only entries (pyobjc, qtpy). They are never
+    installed on Windows.
+
+---
+
+## 0b. Work in progress: Programtour, developed by the local model (2026-11-02)
+
+The owner's request: "use Glubokaya-Op with llm to dev it, and you are a head chief". Claude
+plans, writes each task's exact spec, hidden tests and reference solution, and reviews. The
+local qwen 14B writes the feature code through the harness. This is ChatBook's pattern.
+
+- **The app:** `E:\Playground_Projects\Programtour` (GitHub `ViewAJirapat/Programtour`, which
+  is **public**), a tour-booking site:
+  - backend: Django 4.0 + DRF + Wagtail 2.16 in `panntour/`;
+  - frontend: React in `client/`.
+- **Branches** (owner's request): `v1` and `dev` were created from `main` (`c1fd7a4`) and
+  pushed; the checkout is on `dev`.
+  - Staff commit `0e22cb0` on `dev`, not pushed:
+    - `AGENTS.md`;
+    - `TIME_ZONE` set to Asia/Bangkok;
+    - CORS middleware moved before CommonMiddleware;
+    - `PubWebTour.pem` untracked, with `*.pem` ignored.
+  - That key is an SSH private key that was public on GitHub; the owner must replace it on
+    its server.
+- **Harness side:** `E:\Playground_Projects\Programtour-swarm`, its own local git repo (like
+  ChatBook's `harness/`):
+  - `swarm.toml`, the target `programtour`:
+    - base `dev`;
+    - gates: `manage.py check`, `makemigrations --check`, ruff (errors only),
+      `manage.py test`;
+    - autofix: `makemigrations`;
+    - protected: client, settings, existing migrations, tests;
+  - `.venv`: Python 3.10 (Django 4.0 can't run on 3.13+), 107 MB, with the owner's OK;
+  - `tasks/`, `tools/hidden.sh` (runs a task's hidden tests on any checkout),
+    `notes/survey/` (the verified survey of bugs, security, the client contract and features).
+  - Run the harness from this worktree:
+    `.venv\Scripts\python.exe -m swarm -c ..\Programtour-swarm\swarm.toml <validate|run|integrate>`.
+- **Harness changes for it (on `studio`):**
+  - `b58d980`: a target's own `python` (host only), used for `{python}`, the import check
+    and the hidden tests;
+  - `b57ea41`: gate labels name scripts by their file.
+- **Hidden tests for Django:** each task's `acceptance/conftest.py` sets
+  `DJANGO_SETTINGS_MODULE=krabi.settings` and calls `django.setup()`. pytest-django sets up
+  too early to see an env var set later.
+- **Wave 1** (approved by the owner 2026-11-02):
+
+  | Task | File | Change |
+  |---|---|---|
+  | pt-01 | models.py | imports, status defaults, tourid size, tour text caps |
+  | pt-02 | views.py | logins reply 401/400 instead of 500 |
+  | pt-03 | views.py | `/addtourbooking/` validation, no "null" placeholders |
+  | pt-04 | serializers.py | write-only passwords, unique usernames |
+  | pt-05 | views.py | `?userid=` filter on the booking list |
+
+  - Oracle: 5/5 validate. The oracle branches were deleted; their runs are archived in
+    `runs/oracle-validate/`.
+  - Spec review: 5 reviewers each implemented a task from its spec alone. Every hidden test
+    was justified. Their weak-test findings were fixed, including a shared test that every
+    view keeps its decorators.
+  - **Done 2026-11-02: 5/5 accepted, all written by the local 14B.**
+    - pt-01, 02, 04 and 05 passed on the first attempt (3.5-4.5 min each).
+    - pt-03 failed 4/4 on one test: the model applied the "null" -> None rule only to the
+      counts. The spec now spells it out as an explicit loop, and the retry passed on the
+      first attempt.
+    - `dev` @ `f73affa` (11 commits ahead of `origin/dev`, **not pushed**). All gates and
+      143 hidden tests are green. Diffs reviewed; the only extras are whitespace on
+      untouched lines.
+    - `accepted.txt` lists the 5 branches. `tools/wave.sh` is the chief loop: run, then
+      integrate with the accepted branches, fast-forward `dev`, and stop at the first failure.
+- **Wave 1 was pushed** (`origin/dev` @ `f73affa`) at the owner's request.
+- **Wave 2 (2026-11-02, done): 5/5 accepted, all written by the local 14B:**
+
+  | Task | Change |
+  |---|---|
+  | pt-06 | updateTourDetail: no junk rows, id 400/404, partial serializer update, images only from uploads |
+  | pt-07 | deleteTourDetail: 400/404/200 JSON |
+  | pt-08 | addTourDetail: serializer validation; `''`, `"null"` and `"undefined"` become None |
+  | pt-09 | `?tourcategory=` / `?search=` on the tour list |
+  | pt-10 | data migration 0009: placeholders become NULL, Thai statuses become codes |
+
+  - Staff stub commit for 0009: `e7a59d1`.
+  - pt-06 failed 4/4 first: the model checked "empty" before the alias fallback. The spec now
+    gives the exact loop, and the retry passed on attempt 2. All the others passed on the
+    first attempt.
+  - The spec review caught a real regression in the reference solution of pt-08: `''`
+    descriptions would have been rejected. It also caught a pt-10 test that passed
+    `schema_editor=None`.
+  - `dev` @ `4549faa`. All gates and 275 hidden tests (10 tasks) are green. Diffs reviewed.
+    **Wave 2 is not pushed.**
+  - Behavior the client will see: adding a tour without both images is now a 400. The
+    client only logs it, so a client fix should show the error.
+- **Lesson (both waves):** where order or scope matters, give the 14B the exact loop.
+  Prose like "a value that is X becomes Y" or "see below" was read narrowly (pt-03, pt-06).
+- **Ollama after a reboot:** start it from a normal PowerShell window, not the Claude app's
+  terminal panel, with `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0`. Started
+  from the app's terminal it found no GPU (`total_vram="0 B"`) and ran the 14B on the CPU at
+  0.85 tok/s; the first pt-01 run timed out because of it. Correctly started: 8.88/8.88 GB in
+  VRAM, 25 tok/s. The tray app can't start its own server here.
+- **Next candidates (owner decides):**
+  - push `dev`;
+  - Wave 2 backend: rewrite updateTourDetail/deleteTourDetail (junk rows), clean old
+    "null"/"จอง" rows with a data migration, a server-side price from the tour (needs unique
+    tour codes first);
+  - the client fixes: the shadowed `config` in 3 files, `?userid=` in BookingTable.js and
+    StatusTable.js, the refund-proof URL missing `/api`. These need JS gates, so `npm install`
+    (about 350 MB, ask first);
+  - real authentication, last, as one designed change.
+- **Out of scope until designed:** real authentication (sessions, permissions, hashed
+  passwords). The critic showed it would break the client and every earlier hidden test, so
+  it lands last, as one designed change. Also the client fixes (the shadowed `config` in 3
+  files, `?userid=` in BookingTable.js and StatusTable.js).
 
 ---
 
@@ -140,6 +403,8 @@ are tied; repeat runs (`-r 3`) would settle the default brain.
 11. **Non-ASCII characters in `.ps1` scripts.** Windows PowerShell 5.1 reads BOM-less files in the system code page (Thai on the original PC). Keep scripts ASCII.
 12. **Installing uv-managed Python or uv tools from inside the Claude desktop app.** It's a packaged (MSIX) app, so Windows redirects its child processes' writes under `AppData` to `...\Packages\Claude_*\LocalCache`. `uv tool install` then breaks ("Missing expected target directory for Python minor version link"), or installs where a normal terminal can't see it. From a Claude session, set `UV_PYTHON_INSTALL_DIR`, `UV_TOOL_DIR` and `UV_CACHE_DIR` to folders under `~\.local\share\uv` for that command; from a normal terminal, nothing special is needed. On the RTX 4080 PC, Aider lives in `~\.local\share\uv\tools`, so `uv tool upgrade` needs `UV_TOOL_DIR` set there.
 13. **Trusting `os.walk(followlinks=False)` on Windows.** It still descends into junctions, and `Path.is_symlink()` is False for them. Check `Path.is_junction()` too.
+14. **Python's default HTTP server bind on Windows.** `http.server`, `socketserver` and `wsgiref` set `SO_REUSEADDR`, and on Windows that lets a second server bind a port another app already listens on. The browser then reaches either app. Seen 2026-11-01: the studio and a ChatBook server both listened on one port. The studio and the webapp frame bind with `SO_EXCLUSIVEADDRUSE` (`swarm/studio/server.py:ExclusiveServer`).
+15. **`ruff format .` at the repo root.** ruff 0.17 also formats Python code blocks inside Markdown, so it rewrites the owner's `autonomous_coding_agent_swarm_blueprint.md`, which must stay as is. Format the code folders by name (`ruff format swarm tests frames`); the harness's own check is `ruff check .`.
 
 ---
 

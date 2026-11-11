@@ -1,0 +1,56 @@
+# Harness target for apps built on the webapp frame (frames/webapp). Swarm Studio copies the
+# frame into a new git repo per project and adds `repo` and `tasks` to this table.
+base = "main"
+rules_file = "AGENTS.md"
+pythonpath = ["src"]
+import_check = "webapp"
+sandbox = "none"
+verify = [
+  ["{python}", "-m", "ruff", "check", "."],
+  ["{python}", "-m", "ruff", "format", "--check", "."],
+  ["{python}", "-m", "mypy", "src"],
+  ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"],
+]
+# restore_contracts first: the 14B deleted the CONTRACT, or moved it below the imports, on
+# 2 of 4 attempts in the first real run, with hidden tests already passing.
+autofix = [
+  ["{python}", "tools/restore_contracts.py"],
+  ["{python}", "-m", "ruff", "check", "--fix", "--exit-zero", "--quiet", "."],
+  ["{python}", "-m", "ruff", "format", "--quiet", "."],
+]
+# The frame is written by the studio, never by the worker: tests (with the CONTRACT
+# snapshots), tools, core, the page shell, ui.json and the example feature.
+protected = [
+  "tests/**", "tools/**", "conftest.py", "pyproject.toml", "setup.cfg", "setup.py", "tox.ini",
+  "pytest.ini", "mypy.ini", ".mypy.ini", "ruff.toml", ".ruff.toml", "sitecustomize.py",
+  "usercustomize.py", "AGENTS.md", "CLAUDE.md", ".claude", ".git*", ".aider*",
+  "src/webapp/core/**", "src/webapp/app.py", "src/webapp/app/**", "src/webapp/__init__.py",
+  "src/webapp/__main__.py", "src/webapp/__main__/**", "src/webapp/features/__init__.py",
+  "src/webapp/features/health/**", "src/webapp/static/**", "src/webapp/ui.json",
+]
+# Protected files are hidden from Aider; the worker codes against these, so show them.
+context_files = ["src/webapp/core/http.py", "src/webapp/core/store.py"]
+forbidden_added = [
+  '#\s*type:\s*ignore',
+  '#\s*noqa',
+  '#\s*pragma:\s*no\s*cover',
+  'pytest\.(mark\.)?(skip|xfail|importorskip)',
+  'unittest\.skip',
+  'collect_ignore',
+]
+
+[architecture]
+root = "src"
+packages = ["webapp"]
+independent = ["webapp.features.*"]
+
+[[architecture.forbid]]
+from = "webapp.core.**"
+to = ["webapp.features.**", "webapp.app", "webapp.__main__"]
+fix = "core is the stable base and must not know about features or the app."
+
+[[architecture.forbid]]
+from = "webapp.features.**"
+to = "webapp.**"
+allow = ["webapp.core.api", "webapp.features.**"]
+fix = "A feature may import only webapp.core.api (route, Request, Response, HTTPError, Item) and modules in its own folder."

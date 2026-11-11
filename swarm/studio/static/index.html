@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Swarm Studio</title>
+  <link rel="stylesheet" href="/static/studio.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span>Swarm Studio</div>
+    <div class="project" id="project-name"></div>
+    <div class="pills">
+      <span class="pill" id="pill-chief" title="The chief plans the app"></span>
+      <span class="pill" id="pill-worker" title="The worker writes the code, through the harness"></span>
+    </div>
+    <div class="busy" id="busy" hidden><span class="spinner" aria-hidden="true"></span><span id="busy-text"></span></div>
+    <div class="spacer"></div>
+    <span class="pill build" id="pill-build"></span>
+    <button class="ghost" id="btn-pause" hidden>Pause</button>
+    <button class="ghost" id="btn-resume" hidden>Resume</button>
+  </header>
+
+  <div class="layout">
+    <section class="pane chat" aria-label="Chat">
+      <div class="pane-head">Chat</div>
+      <div class="messages" id="messages" aria-live="polite"></div>
+      <form class="composer" id="composer">
+        <textarea id="input" rows="3" placeholder="Describe the app you want..."></textarea>
+        <div class="composer-row">
+          <span class="hint" id="input-hint">Enter to send, Shift+Enter for a new line</span>
+          <button type="submit" id="send">Send</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="pane work" aria-label="Plan and tasks">
+      <div class="tabs" role="tablist">
+        <button role="tab" class="tab active" data-tab="plan" id="tab-plan">Plan</button>
+        <button role="tab" class="tab" data-tab="tasks" id="tab-tasks">Tasks</button>
+      </div>
+      <div class="tab-body" id="view-plan"></div>
+      <div class="tab-body" id="view-tasks" hidden>
+        <div class="task-list" id="task-list"></div>
+        <div class="task-detail" id="task-detail" hidden>
+          <div class="detail-head" id="detail-head"></div>
+          <div class="subtabs" role="tablist">
+            <button class="subtab active" data-sub="log">Log</button>
+            <button class="subtab" data-sub="diff">Diff</button>
+            <button class="subtab" data-sub="attempts">Attempts</button>
+          </div>
+          <pre class="log" id="detail-log"></pre>
+          <pre class="diff" id="detail-diff" hidden></pre>
+          <div class="attempts" id="detail-attempts" hidden></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane preview" aria-label="Preview">
+      <div class="pane-head preview-head">
+        <span>Preview</span>
+        <a id="preview-url" class="url" target="_blank" rel="noopener"></a>
+        <span class="spacer"></span>
+        <button class="ghost small" id="btn-reload" title="Reload the preview">Reload</button>
+        <button class="ghost small" id="btn-restart" title="Restart the app server">Restart</button>
+      </div>
+      <div class="preview-note" id="preview-note" hidden></div>
+      <iframe id="preview-frame" title="Preview of the app being built"></iframe>
+    </section>
+  </div>
+
+  <div class="modal" id="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-head"><span id="modal-title"></span><button class="ghost small" id="modal-close">Close</button></div>
+      <pre id="modal-body"></pre>
+    </div>
+  </div>
+  <script src="/static/studio.js"></script>
+</body>
+</html>

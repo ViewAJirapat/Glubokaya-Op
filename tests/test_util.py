@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from swarm.util import agent_env, clip, run_cmd
+from swarm.verify import short_name
 
 
 def test_timeout_kills_child_and_grandchild(tmp_path: Path) -> None:
@@ -36,3 +37,18 @@ def test_agent_env_drops_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env["ANTHROPIC_API_KEY"] == "key" and env["EXTRA"] == "1"
     assert env["GIT_CONFIG_VALUE_1"] == "never"  # no git remotes for the agent
     assert "PATH" in {k.upper() for k in env}
+
+
+@pytest.mark.parametrize(
+    "name,short",
+    [
+        ("python -m ruff format --check .", "ruff format"),
+        ("python -m pytest -q -p no:cacheprovider tests", "pytest"),
+        ("python panntour/manage.py check", "manage.py check"),
+        ("python panntour/manage.py makemigrations --check --dry-run", "manage.py makemigrations"),
+        ("python tools/check_extra.py", "check_extra.py"),
+        ("hidden acceptance tests", "acceptance"),
+    ],
+)
+def test_short_gate_names(name: str, short: str) -> None:
+    assert short_name(name) == short

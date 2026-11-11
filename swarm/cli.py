@@ -7,6 +7,8 @@ swarm bench                   run all tasks, print a pass-rate table, save JSON
 swarm integrate               merge passing agent branches and re-run every gate
 swarm archlint [PATH]         check a checkout against the target's architecture rules
 swarm docker-build            build the image for targets with sandbox = "docker"
+swarm studio [PROJECT]        desktop app: describe an app in a chat; the chief plans it and
+                              the harness builds it, with live logs, diffs and a preview
 swarm runs | tasks | clean
 """
 
@@ -94,6 +96,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("path", nargs="?", help="checkout to check (default: the target repo)")
     p.add_argument("--json", action="store_true", help="machine-readable output")
 
+    p = sub.add_parser("studio", help="open Swarm Studio (chat -> plan -> build -> preview)")
+    p.add_argument("project", nargs="?", default="todo", help="project name (default: todo)")
+    p.add_argument("-e", "--engine", help="worker engine (default: [studio] engine)")
+    p.add_argument("--port", type=int, default=0, help="studio port (default: any free one)")
+    p.add_argument(
+        "--window",
+        choices=["auto", "webview", "edge", "browser", "none"],
+        default="auto",
+        help="desktop window (auto: pywebview if installed, else Edge app mode)",
+    )
+    p.add_argument(
+        "--plan-file",
+        help="skip the chief model: every draft is this plan JSON (try the studio without a GPU)",
+    )
+
     sub.add_parser("docker-build", help="build the sandbox image (docker/Dockerfile)")
     sub.add_parser("tasks", help="list tasks")
     p = sub.add_parser("runs", help="list recent runs")
@@ -156,6 +173,19 @@ def main(argv: list[str] | None = None) -> int:
                 return 0 if result.ok else 1
             case "docker-build":
                 return 0 if sandbox.build_image(cfg.sandbox, log) else 1
+            case "studio":
+                from swarm.studio import app
+
+                return app.run(
+                    _config_path(args.config),
+                    args.project,
+                    engine=args.engine,
+                    port=args.port,
+                    window=args.window,
+                    plan_file=Path(args.plan_file) if args.plan_file else None,
+                    sandbox=args.sandbox,  # the studio builds its own target
+                    log=log,
+                )
             case "tasks":
                 for t in find_tasks(target.tasks_dir, []):
                     hidden = "hidden tests" if t.acceptance_dir else "NO hidden tests"

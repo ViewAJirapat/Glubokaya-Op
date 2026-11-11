@@ -5,6 +5,11 @@ description = "Closed-loop coding-agent harness: worktree per task, tamper-check
 requires-python = ">=3.12"
 dependencies = []
 
+[project.optional-dependencies]
+# `swarm studio` in a native window (Edge WebView2, built into Windows 11). Without it the
+# studio opens Edge in app mode. Install: uv sync --extra desktop
+desktop = ["pywebview>=6.2"]
+
 [project.scripts]
 swarm = "swarm.cli:main"
 
@@ -35,3 +40,8 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.mypy]
 strict = true
 files = ["swarm"]
+
+# pywebview is optional (the studio's native window); without it the studio uses Edge.
+[[tool.mypy.overrides]]
+module = ["webview"]
+ignore_missing_imports = true

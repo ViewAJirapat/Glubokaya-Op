@@ -46,7 +46,7 @@ gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
 
 | Phase | What | Effect on Claude tokens | Size |
 |---|---|---|---|
-| S | Merge `studio` into `main`; a pluggable chief | planning leaves Claude | 1-2 days |
+| S | Merge `studio` into `main`; a pluggable chief | planning leaves Claude | done 2026-11-11 |
 | C | Connect Claude or Antigravity as an optional chief | a stronger planner on demand, metered | 1-2 days |
 | A | Protected CONTRACT blocks in the harness | fewer failed runs to diagnose | 1 day |
 | B | Context-budget check and token counts | no silent overflows; the cost line gets numbers | 1-2 days |
@@ -55,7 +55,13 @@ gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
 | E | Bench per task and `compare` | pick the local model that needs the least Claude help | 1 day |
 | G | `clean --failed`, per-run Ollama log, HANDOVER table | less hand work after a wave | half a day |
 
-### Phase S: Studio on `main`, pluggable chief
+### Phase S: Studio on `main`, pluggable chief (done 2026-11-11)
+
+Done as written, with two corrections found while doing it: `studio` was merged, not
+rebased, because HANDOVER and DEVELOPMENT cite its commits by hash (the core/desktop split
+already exists as separate commits in that history); and the Programtour waves were planned
+by Claude, not the local chief, so the cost line that measures the local chief is the todo
+demo. HANDOVER section 0 has the table.
 
 1. Rebase `studio` (worktree `E:\Playground_Projects\04_AgentSwarm-studio`) on `main`;
    full suite in its venv.
@@ -71,7 +77,8 @@ gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
    then the page and the `desktop` extra. The core stays dependency-free.
 4. README "Studio" section; HANDOVER section 0 from the branch; the screenshots in
    `docs/studio-demo/`.
-5. Cost line: the two Programtour waves (10 tasks) with the local chief.
+5. Cost line: the Studio todo demo (local chief) and the two Programtour waves (10 tasks,
+   Claude as chief) in one table.
 
 ### Phase C: Claude or Antigravity as an optional chief
 

@@ -281,11 +281,12 @@ def run_task(
     push: bool = False,
     pr: bool = False,
     log: Log = print,
+    run_id: str | None = None,
 ) -> RunSummary:
     settings = cfg.settings
     engine = make_engine(spec)
     box = sandbox.make_box(cfg, target)
-    run_id = new_run_id(task, spec)
+    run_id = run_id or new_run_id(task, spec)  # a caller that watches runs/<id> picks it first
     run_dir = cfg.runs_dir / run_id
     run_dir.mkdir(parents=True)
     wt = cfg.worktrees_dir / target.name / run_id
@@ -311,9 +312,11 @@ def run_task(
         git.add_worktree(target.repo, wt, s.branch, s.base_sha)
         created = True
         say(f"worktree {wt} on {s.branch} @ {s.base_sha[:10]}")
-        if box is not HOST:
+        if box.kind != HOST.kind:
             where = "in a container" if engine.sandboxed else "on the host"
             say(f"sandbox {box.kind}: gates in containers, agent {where}")
+        elif box.python != HOST.python:
+            say(f"target python {box.python}")
 
         problem = verify.import_check(wt, target, box)
         if problem:
