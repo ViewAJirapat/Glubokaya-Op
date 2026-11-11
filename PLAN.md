@@ -1,171 +1,198 @@
-# Operational plan: harness improvements
+# Operational plan: fewer Claude tokens, a local stand-in, optional connection
 
-Drafted 2026-11-11 from [`suggest.md`](suggest.md). Each phase is one branch and one PR
-against `main`, done in order; a phase ends with its tests green (`pytest`, `ruff`,
-`mypy --strict`) and HANDOVER updated. Sizes are rough and for one person.
+Rewritten 2026-11-11. The repo's purpose, in the owner's words: reduce Claude token use,
+slow down hitting usage limits, and act as a representative of Claude or Antigravity.
+Every phase below is judged by one number: **Claude tokens per feature shipped**. Ideas
+from [`suggest.md`](suggest.md) are kept only where they lower that number.
 
-Rules for all phases:
-- Work on a branch `feat/<phase>`; never commit to `main` directly.
-- No new runtime dependency in the core (`dependencies = []` stays).
-- Every new behaviour gets a regression test; every config field a line in README's
-  `swarm.toml` reference.
-- Prove each phase on a real target before merging: ChatBook's `chatbook-oracle` target
-  (read-only use of that repo) for items 1-4, the `demo` target for 5.
+## 0. What the numbers say today
 
-## Who writes the code: the harness upgrades itself
-
-The plan is run the ChatBook way. Claude writes the specs, the hidden tests and the
-`solution.patch`; the local 14B writes the code; the harness judges. The harness cannot be
-its own target, because the code in `swarm/` of this checkout is what runs the job, so:
-
-1. Clone this repo once to `E:\Playground_Projects\04_AgentSwarm-target` (about 5 MB:
-   `models/`, `.venv/` and `runs/` are ignored). Give it its own `.venv` with `uv sync`
-   so the gates run there.
-2. A scratch config `config/self.toml` with `[targets.self]` pointing `repo` at the clone,
-   the gates `ruff check`, `ruff format --check`, `mypy --strict swarm`, `pytest -q tests`,
-   and `protected = ["tests/**", "swarm/runner.py", "swarm/verify.py", "swarm/guard.py",
-   "config/**"]`: the model must never edit the code that judges it, nor the tests.
-3. Tasks under `tasks/self/<id>/` (`hs-01-blocks-find`, `hs-02-blocks-restore`, ...):
-   `task.toml` with `type`, one target file, `scope`, the prompt; `acceptance/` with the
-   hidden tests; `solution.patch` so `swarm -c config/self.toml -t self validate` proves
-   the spec before the model sees it. A CONTRACT docstring at the top of each new module
-   holds the spec (phase A's own feature then protects it).
-4. `swarm -c config/self.toml -t self run <id>`; review the diff; `integrate`; then
-   `git fetch <clone> agent/<branch>` into this checkout, merge into `main`, push.
-5. Delete the clone after a phase if wanted; it is remade from `main` in a minute.
-
-What the model gets and what staff keep, by the ChatBook numbers (one new file, under
-about 120 lines, a tight spec: 8/10 first-try in P2):
-
-| Model writes | Staff write |
-|---|---|
-| A: `blocks.py` (`find`, `restore`) | A: the call in `runner.py`, the config field |
-| B: `count_tokens`, the `Tokens:` parser | B: the budget check in `runner.py`, `EngineSpec` |
-| C: each lint check in `tasklint.py` | C: the `cli.py` command and the `[lint]` table |
-| D: `_dedupe_pytest` | D: the stuck counter in `runner.py` |
-| E: the grouped table, `compare` | E: `write_bench` changes, `cli.py` |
-| - | F: all of it (a merge, not a coding task) |
-
-Edits to existing files go to the model only when the prompt quotes the exact old and new
-lines, as ChatBook's `fix` prompts do. `mypy --strict` is stricter than anything the 14B
-met in ChatBook, so expect more iterations on typed code; a task that fails twice goes to
-staff rather than a third re-spec.
-
-| Phase | Item in suggest.md | Size | Depends on |
+| Wave | Model wrote | Claude spent (subagent tokens) | Why |
 |---|---|---|---|
-| A | 1 Protected blocks | 1 day | - |
-| B | 2 Context budget + token counts | 1-2 days | - |
-| C | 3 Task lint | 1 day | B (token estimate) |
-| D | 4 Cheaper retries | 1 day | B (token counts to measure) |
-| E | 5 Bench per task + compare | 1 day | B (settings in JSON) |
-| F | 6 Merge `studio` | 1-2 days | A (drops its own CONTRACT fix) |
-| G | Smaller items | half a day | B, E |
+| ChatBook MVP, 22 tasks (2026-10-27) | 22 features | high but spread over many tasks | specs and tests per task, one style |
+| ChatBook P2, 10 tasks (2026-11-01) | 236 lines | about 5 million | 3 designers, trial, 3 reviewers, verifiers, 2 doc passes |
+| Studio demo, 3 features (2026-11-01) | 3 features | planning done by the local 14B | the chief was local |
 
-## Phase A: protected blocks
+Two lessons:
+- The harness itself spends no Claude tokens. A queued `swarm run` ran for an hour on the
+  GPU while the Claude session was cut off, and the work survived. That part is done.
+- Almost all Claude tokens went into Claude's own process (parallel designers, reviews,
+  re-runs after limits), and into writing specs by hand. The lever is the process and the
+  planner, not the worker.
 
-1. `config.py`: `Target.protected_blocks: list[str]` from `protected_blocks` in the target
-   table; default empty (so nothing changes for targets that do not set it).
-2. New `swarm/blocks.py`: `find(text, markers)`, `restore(wt, base_sha, paths, markers)`.
-3. `runner.run_task`: call `restore` after autofix, before `guard.enforce`; put the
-   restored paths in `IterationRecord.restored` and in the feedback text.
-4. `tests/test_blocks.py`: deleted, moved, edited, two blocks, untouched file, a block the
-   restore cannot place (must raise).
-5. Prove: run `swarm -t chatbook-oracle validate cb-42` with `protected_blocks` set and
-   ChatBook's `--restore-contracts` autofix line removed in a scratch copy of its
-   `swarm.toml`; same result as before.
-6. Docs: README config reference, HANDOVER section 2 (the "don'ts" list gets "do not
-   write a per-project restore tool").
+## 1. Working rules (take effect now, cost nothing)
 
-Done when: the ChatBook and Studio restore tools are redundant and the test file passes.
+1. No multi-agent workflows on these repos unless the owner asks. One turn per phase, tests
+   as the judge, one review pass at the end of a phase.
+2. Claude writes harness code directly. Having the 14B upgrade the harness costs more
+   Claude tokens than it saves (spec + tests + patch + review for an 80-line module).
+3. Specs are written once per style, then reused. A wave of similar tasks (pages,
+   handlers) is where the model's share pays; a one-off edit is not.
+4. The ladder, what goes where:
+   - a small edit in any repo: `aider-local`, no Claude at all;
+   - a feature wave: Studio plans with the local chief, the harness runs, Claude is asked
+     only to review the merged diff (one pass);
+   - a new app: Studio end to end; Claude writes the frame only when the local planner
+     cannot (measured, not assumed);
+   - Claude as the chief (section 4): only when the owner turns it on, for a wave the local
+     planner failed on.
+5. Record the cost. Every wave gets one line in HANDOVER: tasks, model lines, Claude turns
+   or tokens, failed runs that needed Claude. This is the number the plan is judged by.
 
-## Phase B: context budget and token counts
+## 2. Phases
 
-1. `config.py`: `EngineSpec.context_window: int | None`, `EngineSpec.reply_reserve: int =
-   2048`; set them in `swarm.toml` for the local engines (8192 for the 14B ones).
-2. `engines.py`: `count_tokens(text, spec)`: Ollama `/api/tokenize` when available, else
-   `len(text) / 3.3` (constant `CHARS_PER_TOKEN`, with the ChatBook measurement cited).
-3. `runner.run_task`: budget check before `engine.run`; `iter-N/budget.txt`; `RunError`
-   on overflow; `--no-budget-check` on `run`, `bench`, `validate`.
-4. After each iteration parse `Tokens: X sent, Y received` from the agent log into
-   `IterationRecord.tokens` (list of pairs); show the largest call in `dispatch.table`.
-5. `settings.ollama_log` (optional path): grep for `context shift` / `truncated = 1` after
-   each iteration, mark `overflowed`, add it to the feedback and the table.
-6. Tests: fake engine with a known log; prompts just under and over the window; a log with
-   and without an overflow line.
-7. Prove: replay the P2 cb-38 prompt (harness `runs/cb-38-page_profile--local-14b-arch--
-   20261101-203750-ecba/iter-1/prompt.md`) through the counter; it must report about
-   7.0k and pass the check with `reply_reserve = 1024`, fail with 2048.
+Order is by effect on the number. Each phase is one branch `feat/<phase>` and one PR;
+gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
 
-Done when: an oversized prompt never reaches the model, and `summary.json` shows tokens.
+| Phase | What | Effect on Claude tokens | Size |
+|---|---|---|---|
+| S | Merge `studio` into `main`; a pluggable chief | planning leaves Claude | 1-2 days |
+| C | Connect Claude or Antigravity as an optional chief | a stronger planner on demand, metered | 1-2 days |
+| A | Protected CONTRACT blocks in the harness | fewer failed runs to diagnose | 1 day |
+| B | Context-budget check and token counts | no silent overflows; the cost line gets numbers | 1-2 days |
+| L | Task lint | prompt mistakes caught before a 20-minute run | 1 day |
+| R | Cheaper retries, stop when stuck | fewer wasted iterations, shorter logs to read | 1 day |
+| E | Bench per task and `compare` | pick the local model that needs the least Claude help | 1 day |
+| G | `clean --failed`, per-run Ollama log, HANDOVER table | less hand work after a wave | half a day |
 
-## Phase C: task lint
+### Phase S: Studio on `main`, pluggable chief
 
-1. New `swarm/tasklint.py` with one function per check (current-lines quote not on base,
-   missing file, no code block in a `fix` task, prompt over 450 words, block over 35
-   lines, a banned token quoted, no `solution.patch`).
-2. `cli.py`: `swarm lint [task ...]`; `run`, `bench` and `validate` call it first and stop
-   on errors.
-3. `[lint]` table in `swarm.toml` for the limits; defaults in code.
-4. Tests: one task folder per check under `tests/data/lint/`.
-5. Prove: lint ChatBook's `harness/tasks` (read-only): cb-38's first prompt (harness
-   commit `ed752d7`) must warn "no code block for the confirm step" or similar; the fixed
-   one (`464ce20`) must pass clean.
+1. Rebase `studio` (worktree `E:\Playground_Projects\04_AgentSwarm-studio`) on `main`;
+   full suite in its venv.
+2. Turn the studio's `Chief(llm: Ollama)` into `Chief(backend: ChiefBackend)`, where
+   ```python
+   class ChiefBackend(Protocol):
+       label: str
+       def complete(self, system: str, user: str, schema: dict[str, Any]) -> dict[str, Any]: ...
+   ```
+   The Ollama backend is the current code moved behind that interface. Nothing else in
+   `chief.py` changes: outline, scenarios, retries stay the same for every backend.
+3. Merge in two commits: core (`swarm/studio/`, the plan schema, the CONTRACT autofix),
+   then the page and the `desktop` extra. The core stays dependency-free.
+4. README "Studio" section; HANDOVER section 0 from the branch; the screenshots in
+   `docs/studio-demo/`.
+5. Cost line: the two Programtour waves (10 tasks) with the local chief.
 
-Done when: the cb-38 mistake is caught before a run.
+### Phase C: Claude or Antigravity as an optional chief
 
-## Phase D: cheaper retries
+Two ways to connect, both off by default. The local 14B keeps writing the code in both;
+only the planner changes. The owner picks per project in Studio's settings or with
+`--chief <name>`.
 
-1. `build_feedback`: `_dedupe_pytest(output)` (FAILED summary lines plus the first
-   assertion block per distinct message); full output stays in `gates.log`.
-2. Track failing test ids per iteration in `IterationRecord.failed_tests`; when the set is
-   unchanged, one summary line instead of the block.
-3. `settings.stop_when_stuck: int = 2`; a counter next to the existing `stuck` flag; end
-   the run as `failed` with `error="stuck: same diff N times"`.
-4. Tests: fake engine returning the same diff; pytest output with repeated messages.
-5. Prove: replay cb-38's four iterations' `gates.log` through the new builder and compare
-   the token count (phase B) of the old and new feedback.
+**C.1 Claude chief (a backend).** `swarm/studio/chief_claude.py`:
+- Uses the `claude` CLI that already exists for `ClaudeEngine`: `claude -p --output-format
+  json --restricted --tools "" --no-session-persistence`, system prompt and schema passed
+  the same way the Ollama backend passes them; the reply is parsed as JSON and validated
+  against the plan schema (Ollama's structured output did that; here a retry with the
+  validation error does it).
+- Needs a signed-in `claude` or `ANTHROPIC_API_KEY`; `preflight` says which is missing.
+- Metered: each call's `total_cost_usd` and tokens from the JSON reply go into the
+  project's cost line, so the owner sees what the option costs against the local chief.
+- Config: `[chiefs.claude]` with `kind = "claude"`, `model`, `extra_args`; `[chiefs.local]`
+  is today's Ollama chief. Default `local`.
 
-Done when: a stuck run ends after `stop_when_stuck` iterations and feedback is shorter.
+**C.2 MCP server (Antigravity, Claude Code, Claude Desktop as the chief).** `swarm mcp`
+starts a stdio MCP server (stdlib JSON-RPC; no SDK dependency) exposing:
+- `list_targets`, `list_tasks`, `task(id)`: read the config and task folders;
+- `plan_from_examples(request, features)`: the studio's plan validation and generated
+  tests, so an outside planner can hand over a plan in the same JSON the local chief makes;
+- `write_task(id, spec)`: creates `tasks/<id>/` with the prompt and generated tests
+  (never edits an existing task);
+- `validate(ids)`, `run(ids, engine)`, `status(run_id)`, `diff(run_id)`, `integrate(ids)`:
+  the CLI commands as tools, each returning the same summary JSON the CLI writes;
+- never a tool that edits target files or tests: the outside chief plans and reads, the
+  harness and the local model do the work, and the guard stays in charge.
 
-## Phase E: bench per task and compare
+Antigravity and Claude Code both take an MCP server by a command line, so one
+`.mcp.json` entry (`swarm mcp -c <config>`) connects either. The IDE becomes the chat and
+plan view; Studio's page stays for the local-only path.
 
-1. `dispatch.table`: grouped table when a task id repeats (passed/runs, first-try/runs,
-   mean time, mean iterations when passed).
-2. `write_bench`: `by_task`, `totals`, and an `environment` block (`OLLAMA_FLASH_ATTENTION`,
-   `OLLAMA_KV_CACHE_TYPE`, `num_ctx` from `/api/ps`).
-3. `cli.py`: `swarm compare a.json b.json`.
-4. Tests: `table` with repeats; `compare` on two small files.
-5. Prove: `swarm -t demo bench -r 3 -e local-14b-arch` (about 35 min on the 1080 Ti with
-   the new Ollama settings); then HANDOVER's engine table gets a row with the settings and
-   the old rows are marked "before flash attention".
+Tests: the Claude backend with a fake `claude` script on PATH; the MCP server with a
+scripted client over stdio, one call per tool, plus a refusal test for an edit attempt.
 
-Done when: the 14B vs 30B question can be answered from two JSON files.
+Cost line: one wave with the Claude chief against the same wave with the local chief,
+tokens and pass rate side by side. That answers whether the option is worth its price.
 
-## Phase F: merge `studio`
+### Phase A: protected CONTRACT blocks
 
-1. Read the studio HANDOVER section 0 and `docs/studio.md`; list core vs studio-only files.
-2. Rebase `studio` on `main` (main is at `a916d24` plus phases A-E by then; expect
-   conflicts in `runner.py` around the CONTRACT autofix: keep phase A's version).
-3. Two commits: core changes (chief interface, plan schema), then the app and the
-   `desktop` extra. Full suite in the studio worktree's own venv.
-4. README "Studio" section, HANDOVER, the screenshots already in `docs/studio-demo/`.
-5. Later: lift the generated-tests code into `swarm/examples.py` for `bench`.
+1. `Target.protected_blocks: list[str]` (`config.py`); default empty.
+2. `swarm/blocks.py`: `find(text, markers)`, `restore(wt, base_sha, paths, markers)`.
+3. `runner.run_task`: restore after autofix, before `guard.enforce`; restored paths in
+   `IterationRecord` and in the feedback.
+4. `tests/test_blocks.py`: deleted, moved, edited, two blocks, untouched file, cannot
+   place (raises).
+5. Prove on ChatBook's `chatbook-oracle` with its own `--restore-contracts` line removed
+   in a scratch copy of its config. Studio's copy of the fix is then dropped too.
 
-Done when: `main` starts the studio with `swarm studio` and the core tests still pass.
+### Phase B: context budget and token counts
 
-## Phase G: smaller items
+1. `EngineSpec.context_window`, `EngineSpec.reply_reserve = 2048`; set for the local
+   engines in `swarm.toml`.
+2. `engines.count_tokens(text, spec)`: Ollama `/api/tokenize` when the server has it, else
+   `len(text) / 3.3` (`CHARS_PER_TOKEN`, the ChatBook measurement cited).
+3. Budget check in `runner.run_task` before `engine.run`; `iter-N/budget.txt`; `RunError`
+   on overflow; `--no-budget-check`.
+4. Parse `Tokens: X sent, Y received` into `IterationRecord.tokens`; the largest call in
+   `dispatch.table`; both into the cost line.
+5. `settings.ollama_log`: grep `context shift` / `truncated = 1` per iteration.
+6. Prove: the P2 cb-38 prompt counts about 7.0k; passes with `reply_reserve = 1024`,
+   fails with 2048.
 
-1. `swarm clean --failed` (reads `summary.json`, removes only failed runs' worktrees and
-   branches).
-2. Per-run `ollama.log` copied from `settings.ollama_log` during the run.
-3. HANDOVER engine table refreshed (done with phase E's bench).
+### Phase L: task lint
 
-## Risks
+1. `swarm/tasklint.py`, one function per check: current-lines quote not on base (error),
+   missing file (error), `fix` task with no code block (warning), prompt over 450 words or
+   a block over 35 lines (warning), a banned token quoted in the prompt (warning), no
+   `solution.patch` (warning).
+2. `swarm lint [task ...]`; `run`, `bench`, `validate` call it first. `[lint]` limits in
+   `swarm.toml`. Studio's `write_task` (phase C.2) calls it too.
+3. Prove: ChatBook's first cb-38 prompt (harness `ed752d7`) warns; the fixed one
+   (`464ce20`) passes.
 
-- Phase A's block finder must not touch files the task did not change, or it becomes a
-  silent edit of the agent's work; the "untouched" test guards it.
-- Phase B's chars-per-token fallback is a guess for other models; the real tokenizer path
-  must be the default when the server has it.
-- Phase F may fight phases A-E for the same lines in `runner.py`; do it last.
+### Phase R: cheaper retries
+
+1. `_dedupe_pytest` in `build_feedback`; the full output stays in `gates.log`.
+2. `IterationRecord.failed_tests`; an unchanged set becomes one line.
+3. `settings.stop_when_stuck = 2` on top of the existing `stuck` flag; the run ends
+   `failed` with `error="stuck: same diff N times"`.
+4. Prove: replay cb-38's four `gates.log` files; compare old and new feedback size with
+   phase B's counter.
+
+### Phase E: bench per task and compare
+
+1. `dispatch.table` grouped by task when ids repeat: passed/runs, first-try/runs, mean
+   time, mean iterations when passed.
+2. `write_bench`: `by_task`, `totals`, `environment` (`OLLAMA_FLASH_ATTENTION`,
+   `OLLAMA_KV_CACHE_TYPE`, `num_ctx`).
+3. `swarm compare a.json b.json`.
+4. Prove: `swarm -t demo bench -r 3 -e local-14b-arch` (about 35 min on the 1080 Ti);
+   HANDOVER's engine table gets the new row and the old rows a "before flash attention"
+   mark.
+
+### Phase G: smaller
+
+`swarm clean --failed`; per-run `ollama.log` from `settings.ollama_log`; the HANDOVER
+engine table refresh with phase E's numbers.
+
+## 3. What is not in the plan, and why
+
+- The 14B upgrading the harness through a clone target. Possible (the harness can take a
+  clone of itself as a target, with `tests/`, `runner.py`, `verify.py`, `guard.py`
+  protected), but it costs more Claude tokens than writing the code directly. Kept as an
+  experiment for later, not as the way to deliver this plan.
+- Claude as the worker (`ClaudeEngine` exists). It is the ceiling for `bench`, not a path
+  for daily work: it spends the tokens the repo exists to save.
+- A bigger local planner (qwen3-coder 30B). Ruled out by the hardware (11 GB VRAM, 16 GB
+  RAM); phase C's optional chief is the way to get a stronger planner.
+
+## 4. Risks
+
+- Phase S may collide with phases A, B and R in `runner.py`; S goes first, so the others
+  rebase on it.
+- Phase C.2's server must never expose an edit tool; the refusal test guards it.
+- Phase B's chars-per-token fallback is a guess for other models; the tokenizer path is
+  the default when the server has it.
+- The Claude chief is metered but not free; the cost line, not a feeling, decides when
+  it is used.
 - Local-model proofs take the GPU for 10-35 min each; run them when nothing else needs
   Ollama.
