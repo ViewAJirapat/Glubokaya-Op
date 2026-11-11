@@ -413,9 +413,10 @@ names: `*` is one segment, `**` any number (including none).
 
 ```
 swarm/            harness (cli, runner, guard, verify, archlint, engines, sandbox, dispatch, git, config)
-swarm/studio/     Swarm Studio: plan + checks + codegen, chief, build loop, server, UI (static/)
+swarm/mcp.py      `swarm mcp`: the harness as an MCP server (Claude Code / Antigravity as the chief)
+swarm/studio/     Swarm Studio: plan + checks + codegen, chief (+ chief_claude), build loop, server, UI (static/)
 frames/webapp/    the studio's app frame (frames/webapp.toml: its harness target)
-swarm.toml        targets + engines + [sandbox] + [studio]
+swarm.toml        targets + engines + [sandbox] + [studio] + [chiefs.*]
 docker/           sandbox image (python 3.12, git, aider, pytest/ruff/mypy)
 config/           aider model settings (Ollama context sizes)
 demo/shopkit/     template for the demo target repo
