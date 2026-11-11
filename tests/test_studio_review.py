@@ -145,9 +145,7 @@ class ScriptedLLM(chiefmod.Ollama):
         self.answers = answers
         self.kinds: list[str] = []
 
-    def complete(
-        self, system: str, user: str, schema: dict[str, Any], progress: Any = None
-    ) -> Any:
+    def complete(self, system: str, user: str, schema: dict[str, Any], progress: Any = None) -> Any:
         self.kinds.append("outline" if schema is chiefmod.OUTLINE_SCHEMA else "scenarios")
         return self.answers.pop(0)
 

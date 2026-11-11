@@ -23,6 +23,20 @@ num_predict = 3072                 # cap per chief reply
 projects_dir = "work/studio"
 feedback_chars = 3000              # failure output per retry; small for an 8k context
 sandbox = "none"                   # "docker": worker and checks in containers (or swarm --sandbox docker studio)
+chief = "local"                    # the planner: a [chiefs.<name>] below (or swarm studio --chief NAME)
+
+# Chiefs: who plans in the studio. The local model writes the code with either. `local` is
+# Ollama with the [studio] settings above and exists even without this table. `claude` runs
+# the `claude` CLI with no tools, one call per plan step, and is metered: each plan's cost
+# and tokens go into the project's cost line. Needs a signed-in claude or ANTHROPIC_API_KEY.
+[chiefs.local]
+kind = "local"
+
+[chiefs.claude]
+kind = "claude"
+# model = "claude-sonnet-5-5"      # default: the CLI's own default model
+# extra_args = ["--max-budget-usd", "1"]
+timeout = 600
 
 # ---------------------------------------------------------------------------
 # Targets

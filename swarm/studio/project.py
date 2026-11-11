@@ -38,6 +38,7 @@ from swarm.config import SANDBOX_KINDS, Config, Target
 from swarm.engines import make_engine
 from swarm.runner import ERROR, INVALID, PASSED, RunSummary, new_run_id, run_task
 from swarm.studio import plan as planmod
+from swarm.studio.chief import Usage
 from swarm.studio.events import Events
 from swarm.studio.plan import Feature, Plan
 from swarm.studio.preview import Preview
@@ -84,6 +85,7 @@ class StudioSettings:
     projects_dir: str = "work/studio"
     feedback_chars: int = 3000  # failure output per retry; 8k-context models need it small
     sandbox: str = "none"  # "docker": worker and checks run in containers (swarm/sandbox.py)
+    chief: str = "local"  # the planner: a [chiefs.<name>] entry (`swarm studio --chief NAME`)
 
     @classmethod
     def load(cls, config_path: Path) -> StudioSettings:
@@ -97,6 +99,37 @@ class StudioSettings:
         if settings.sandbox not in SANDBOX_KINDS:
             raise config_mod.ConfigError(f"[studio]: sandbox must be one of {SANDBOX_KINDS}")
         return settings
+
+
+CHIEF_KINDS = ("local", "claude")
+
+
+@dataclass
+class ChiefSpec:
+    """[chiefs.<name>] in swarm.toml. `local` is Ollama with the [studio] settings; `claude`
+    is the Claude CLI (swarm/studio/chief_claude.py), metered, off unless chosen."""
+
+    name: str
+    kind: str = "local"
+    model: str | None = None  # local: the Ollama model (default [studio] chief_model)
+    extra_args: list[str] = field(default_factory=list)  # claude: more CLI flags
+    timeout: float = 600.0  # claude: seconds per call
+
+    @classmethod
+    def load_all(cls, config_path: Path) -> dict[str, ChiefSpec]:
+        with config_path.open("rb") as fh:
+            raw = tomllib.load(fh).get("chiefs", {})
+        known = {f.name for f in fields(cls)} - {"name"}
+        chiefs: dict[str, ChiefSpec] = {"local": cls("local")}
+        for name, entry in raw.items():
+            unknown = set(entry) - known
+            if unknown:
+                raise config_mod.ConfigError(f"[chiefs.{name}]: unknown keys {sorted(unknown)}")
+            spec = cls(name, **entry)
+            if spec.kind not in CHIEF_KINDS:
+                raise config_mod.ConfigError(f"[chiefs.{name}]: kind must be one of {CHIEF_KINDS}")
+            chiefs[name] = spec
+        return chiefs
 
 
 @dataclass
@@ -126,6 +159,8 @@ class State:
     tasks: list[TaskState] = field(default_factory=list)
     build: str = "idle"  # idle | running | paused | stopped | done
     pending: list[str] = field(default_factory=list)  # requests that arrived during a build
+    # The cost line: what a metered chief (Claude) spent on this project, over every start.
+    chief_usage: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> State:
@@ -195,6 +230,7 @@ class Project:
         self.root = root.resolve()
         self.name = self.root.name
         self.planner = planner
+        self._usage_mark = Usage()
         self.settings = settings or StudioSettings()
         if engine:
             self.settings.engine = engine
@@ -588,7 +624,9 @@ class Project:
         except Exception:
             with self._lock:
                 self.state.plan_status = was if was != "drafting" else "none"
+            self._record_usage()
             raise
+        self._record_usage()
         approved_version = (self.state.approved or {}).get("version", 0)
         plan.version = max(previous.version if previous else 0, approved_version) + 1
         found = planmod.problems(plan, {f.name for f in built})
@@ -613,6 +651,24 @@ class Project:
         if pending and self.state.build != "running":
             note = "\n".join(pending)
             self._submit("revising the plan", lambda: self._draft(self.state.request, plan, note))
+
+    def _record_usage(self) -> None:
+        """Add what the chief spent since the last draft to the project's cost line."""
+        usage = getattr(self.planner, "usage", None)
+        if not isinstance(usage, Usage):
+            return
+        delta = usage.since(self._usage_mark)
+        self._usage_mark = Usage(**asdict(usage))
+        if delta.calls == 0:
+            return
+        with self._lock:
+            totals = self.state.chief_usage or {"label": self.planner.label}
+            for key, value in asdict(delta).items():
+                totals[key] = totals.get(key, 0) + value
+            totals["label"] = self.planner.label
+            self.state.chief_usage = totals
+        total = Usage(**{k: v for k, v in totals.items() if k != "label"})
+        self._say("chief", f"Planner cost: {delta.text()}; this project so far: {total.text()}.")
 
     # -- plan -> files in the app repo -------------------------------------------------------------
 

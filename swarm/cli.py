@@ -9,6 +9,8 @@ swarm archlint [PATH]         check a checkout against the target's architecture
 swarm docker-build            build the image for targets with sandbox = "docker"
 swarm studio [PROJECT]        desktop app: describe an app in a chat; the chief plans it and
                               the harness builds it, with live logs, diffs and a preview
+swarm mcp                     MCP server on stdio: Claude Code, Claude Desktop or Antigravity
+                              as the chief (plan, write tasks, run, read results; never edit)
 swarm runs | tasks | clean
 """
 
@@ -110,6 +112,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--plan-file",
         help="skip the chief model: every draft is this plan JSON (try the studio without a GPU)",
     )
+    p.add_argument(
+        "--chief", help="planner: a [chiefs.*] name from swarm.toml (default [studio] chief)"
+    )
+
+    sub.add_parser("mcp", help="serve the harness to an MCP client on stdio (see README, MCP)")
 
     sub.add_parser("docker-build", help="build the sandbox image (docker/Dockerfile)")
     sub.add_parser("tasks", help="list tasks")
@@ -184,8 +191,13 @@ def main(argv: list[str] | None = None) -> int:
                     window=args.window,
                     plan_file=Path(args.plan_file) if args.plan_file else None,
                     sandbox=args.sandbox,  # the studio builds its own target
+                    chief=args.chief,
                     log=log,
                 )
+            case "mcp":
+                from swarm import mcp
+
+                return mcp.main(cfg)
             case "tasks":
                 for t in find_tasks(target.tasks_dir, []):
                     hidden = "hidden tests" if t.acceptance_dir else "NO hidden tests"
