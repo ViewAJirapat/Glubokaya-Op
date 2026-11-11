@@ -19,6 +19,7 @@ current state (setup, decisions, dead ends, open issues), read [`HANDOVER.md`](H
 | 9 | Swarm Studio (branch `studio`) | 2026-11-01 | `eafeecd` .. `5ae72f0` | Chat, local chief plan, harness build, live preview in a desktop window |
 | 10 | Phase S: Studio on `main`, pluggable chief | 2026-11-11 | `d60ae99`, merge | `Chief(backend: ChiefBackend)`; `studio` merged with its history; cost lines in HANDOVER |
 | 11 | Phase C: Claude chief, `swarm mcp` | 2026-11-11 | `501a223` .. | Claude as an optional metered chief; the harness as an MCP server for Claude Code / Antigravity |
+| 12 | Phase A: protected blocks | 2026-11-11 | `e8a43c1` .. | `protected_blocks`: the harness keeps a file's CONTRACT block on top; replaces the per-project restorers |
 
 ### 0. The blueprint
 
@@ -163,6 +164,25 @@ doing nothing. The fixes are listed in the README under "What changed from the b
   newline-delimited transport). `swarm mcp` was also driven by hand over a real pipe.
 - **Not done:** the cost-line comparison (one wave with the Claude chief against the local
   chief). It spends real Claude tokens and the GPU, so it waits for the owner's OK.
+
+### 12. Phase A: protected blocks (2026-11-11)
+
+- **What:** `Target.protected_blocks` and `swarm/blocks.py`. The block a file begins with
+  (a docstring, or a run of `//`, `#` or `--` lines) is protected when it holds a marker.
+  `runner.run_task` restores it after the autofix and before the guard, for every changed
+  file whose base version has one; the record, `restored.txt`, the progress line, the
+  feedback and the prompt all name it.
+- **Rules chosen:** one block per file, the leading one; blank lines before it are ignored;
+  line endings and a byte-order mark are normalised; a moved copy is cut, an edited copy of
+  the same kind at column 0 is dropped, a deleted file is recreated with its block; a marker
+  in a comment of the other kind, or in an indented docstring, is the model's and stays.
+- **Proof:** ChatBook's own gate (`tools/check_extra.py`) in a scratch worktree, red on a
+  moved docstring and an edited `//` line, green after `blocks.restore`. The studio frame
+  dropped its `tools/restore_contracts.py` and its test; `frames/webapp.toml` sets
+  `protected_blocks = ["CONTRACT"]`.
+- **Tests:** `tests/test_blocks.py`: the text rules, a git worktree, `run_task` with
+  `tests/agents/mover.py` (applies the reference fix and moves the block) passing with the
+  block restored and committed on top, and the no-markers case.
 
 ## Part 2: how to develop it
 

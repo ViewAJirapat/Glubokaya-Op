@@ -313,6 +313,10 @@ model do the work.
 
 1. Add a `[targets.myrepo]` block to `swarm.toml` with `repo`, `base`, `verify`, `protected`
    and `forbidden_added`. Set `pythonpath` and `import_check` for a Python src layout.
+   `protected_blocks = ["CONTRACT"]` keeps the spec block a file begins with (a docstring or
+   a run of `//` / `#` comment lines holding that word) at the top of the file: after every
+   edit the harness puts the base version back if the model deleted, moved or edited it,
+   and tells the model so.
 2. Put an `AGENTS.md` in the repo (rules only; the commands come from `verify`).
 3. Write tasks in `tasks/myrepo/<id>/`:
    - `task.toml` (`title`, `prompt`, optional `type`, `files` and `scope`)

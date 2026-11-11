@@ -19,7 +19,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from swarm import archlint, git, guard, sandbox, verify
+from swarm import archlint, blocks, git, guard, sandbox, verify
 from swarm.config import Config, EngineSpec, Target
 from swarm.engines import AgentContext, make_engine
 from swarm.sandbox import HOST, Box
@@ -45,6 +45,7 @@ class IterationRecord:
     folded_commits: bool
     stages: list[dict[str, object]]
     passed: bool
+    restored: list[str] = field(default_factory=list)  # protected blocks put back (blocks.py)
 
 
 @dataclass
@@ -104,6 +105,13 @@ def build_prompt(task: Task, target: Target, attempt: int, feedback: str | None)
     if target.autofix:
         fixers = ", ".join(f"`{verify.display(c)}`" for c in target.autofix)
         lines.append(f"Before checking, the harness auto-applies: {fixers}.")
+    if target.protected_blocks:
+        names = " or ".join(f"`{m}`" for m in target.protected_blocks)
+        lines.append(
+            f"A file that begins with a {names} block keeps it: leave that block exactly as it "
+            "is, at the top of the file, and put your code below it. The harness puts it back "
+            "unchanged if it is deleted, moved or edited."
+        )
     lines += [
         "",
         "## Rules the harness enforces",
@@ -139,10 +147,17 @@ def build_feedback(
     acceptance: verify.StageResult | None,
     budget: int,
     acceptance_mode: str,
+    restored: list[str] | None = None,
 ) -> str:
     parts: list[str] = []
     if report.folded_commits:
         parts.append("You created commits; the harness turned them back into uncommitted edits.")
+    if restored:
+        parts.append(
+            "The harness put the protected block at the top of these files back exactly as it "
+            "was; your change to that block was dropped. Leave it unchanged and put your code "
+            "below it:\n" + "\n".join(f"- {r}" for r in restored)
+        )
     if report.reverted:
         parts.append(
             "These edits were REVERTED (protected paths, or outside this task's scope). "
@@ -366,6 +381,14 @@ def run_task(
             if target.autofix:
                 fixes = verify.run_autofix(wt, target, settings.verify_timeout, box)
                 _write_stage_log(idir / "autofix.log", fixes)
+            restored: list[str] = []
+            if target.protected_blocks:
+                touched = [c.path for c in git.changes(wt, s.base_sha)]
+                restored = [
+                    str(r) for r in blocks.restore(wt, s.base_sha, touched, target.protected_blocks)
+                ]
+                if restored:
+                    (idir / "restored.txt").write_text("\n".join(restored) + "\n", "utf-8")
             report = guard.enforce(wt, s.base_sha, target, task.scope)
             s.reverted_total += len(report.reverted)
             if agent.error and not report.changes:
@@ -401,6 +424,7 @@ def run_task(
                 folded_commits=report.folded_commits,
                 stages=_stage_dicts(all_stages),
                 passed=passed,
+                restored=restored,
             )
             s.records.append(rec)
             s.iterations = n
@@ -414,6 +438,8 @@ def run_task(
             )
             if report.reverted:
                 line += f" | reverted {len(report.reverted)} edit(s)"
+            if restored:
+                line += f" | restored {len(restored)} block(s)"
             if report.violations:
                 line += f" | {len(report.violations)} forbidden line(s)"
             say("  " + line)
@@ -426,7 +452,12 @@ def run_task(
                 say(f"PASSED in {n} iteration(s); commit {s.commit[:10]} on {s.branch}")
                 break
             feedback = build_feedback(
-                report, stages, acceptance, settings.feedback_chars, settings.acceptance_feedback
+                report,
+                stages,
+                acceptance,
+                settings.feedback_chars,
+                settings.acceptance_feedback,
+                restored,
             )
             if stuck:
                 feedback = (

@@ -48,7 +48,7 @@ gates green (`pytest`, `ruff`, `mypy --strict`), HANDOVER updated.
 |---|---|---|---|
 | S | Merge `studio` into `main`; a pluggable chief | planning leaves Claude | done 2026-11-11 |
 | C | Connect Claude or Antigravity as an optional chief | a stronger planner on demand, metered | done 2026-11-11 (comparison run pending) |
-| A | Protected CONTRACT blocks in the harness | fewer failed runs to diagnose | 1 day |
+| A | Protected CONTRACT blocks in the harness | fewer failed runs to diagnose | done 2026-11-11 |
 | B | Context-budget check and token counts | no silent overflows; the cost line gets numbers | 1-2 days |
 | L | Task lint | prompt mistakes caught before a 20-minute run | 1 day |
 | R | Cheaper retries, stop when stuck | fewer wasted iterations, shorter logs to read | 1 day |
@@ -126,7 +126,11 @@ scripted client over stdio, one call per tool, plus a refusal test for an edit a
 Cost line: one wave with the Claude chief against the same wave with the local chief,
 tokens and pass rate side by side. That answers whether the option is worth its price.
 
-### Phase A: protected CONTRACT blocks
+### Phase A: protected CONTRACT blocks (done 2026-11-11)
+
+Done as written (`e8a43c1`), one change: the proof used ChatBook's gate directly on a scratch
+worktree (red before `blocks.restore`, green after) instead of an oracle run, since the
+oracle never moves a block. ChatBook's own autofix line is the owner's to drop.
 
 1. `Target.protected_blocks: list[str]` (`config.py`); default empty.
 2. `swarm/blocks.py`: `find(text, markers)`, `restore(wt, base_sha, paths, markers)`.

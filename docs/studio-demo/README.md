@@ -54,7 +54,7 @@ Taken in the Claude browser pane at a 1440x900 viewport (saved at 800x500).
 | Chief plan (outline + 3 scenario calls, model load included) | about 3 min | v1, 0 problems, 9 hidden scenarios |
 | 01-todos | 73 s | passed, attempt 1 |
 | 02-todo-edit, first run | 5 min 33 s | failed 4/4: CONTRACT check only (hidden tests 3/3 from attempt 1) |
-| Frame fix + restart | (outside the run) | `tools/restore_contracts.py` autofix; frame update committed in the app |
+| Frame fix + restart | (outside the run) | `tools/restore_contracts.py` autofix (since 2026-11-11 the harness does this: `protected_blocks`); frame update committed in the app |
 | 02-todo-edit, retry | 83 s | passed, attempt 1 |
 | 03-todo-stats | 62 s | passed, attempt 1 |
 

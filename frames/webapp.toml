@@ -11,13 +11,14 @@ verify = [
   ["{python}", "-m", "mypy", "src"],
   ["{python}", "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"],
 ]
-# restore_contracts first: the 14B deleted the CONTRACT, or moved it below the imports, on
-# 2 of 4 attempts in the first real run, with hidden tests already passing.
 autofix = [
-  ["{python}", "tools/restore_contracts.py"],
   ["{python}", "-m", "ruff", "check", "--fix", "--exit-zero", "--quiet", "."],
   ["{python}", "-m", "ruff", "format", "--quiet", "."],
 ]
+# The 14B deleted the CONTRACT docstring, or moved it below the imports, on 2 of 4 attempts
+# in the first real run, with the hidden tests already passing. The harness puts it back
+# after every edit (swarm/blocks.py); tests/test_contracts.py still checks it.
+protected_blocks = ["CONTRACT"]
 # The frame is written by the studio, never by the worker: tests (with the CONTRACT
 # snapshots), tools, core, the page shell, ui.json and the example feature.
 protected = [

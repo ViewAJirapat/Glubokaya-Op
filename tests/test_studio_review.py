@@ -303,7 +303,7 @@ def test_a_frame_update_that_breaks_a_built_feature_is_not_committed(
     project.state.tasks[0].status = "passed"  # pretend 01 was built
     project._save()
     project.close()
-    git.git(project.app, "rm", "-q", "tools/restore_contracts.py")
+    git.git(project.app, "rm", "-q", "AGENTS.md")
     git.git(project.app, "commit", "-qm", "older frame")
     head = git.rev_parse(project.app, "HEAD")
 

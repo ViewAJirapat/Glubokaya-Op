@@ -81,10 +81,12 @@ is never shared.
   - `integrate()` returns the integration branch, or None. It used to return a bool, and
     every caller only tests truthiness.
 - **New:**
-  - `frames/webapp` + `frames/webapp.toml`: the frame and its harness target. Its autofix
-    starts with `tools/restore_contracts.py`, which puts a deleted or misplaced CONTRACT back
-    on top. `Project.update_frame()` brings an existing project's frame files up to date on
-    start, committed only if the frame's gates pass;
+  - `frames/webapp` + `frames/webapp.toml`: the frame and its harness target. The target's
+    `protected_blocks = ["CONTRACT"]` makes the harness put a deleted or misplaced CONTRACT
+    docstring back on top after every edit (`swarm/blocks.py`; until 2026-11-11 the frame
+    carried its own `tools/restore_contracts.py` for this). `Project.update_frame()` brings an
+    existing project's frame files up to date on start, committed only if the frame's gates
+    pass;
   - `swarm/studio/`:
     - `plan.py`: the plan model, checks and code generation;
     - `chief.py`: the `ChiefBackend` protocol, the `Ollama` backend, the `Chief` (outline,
