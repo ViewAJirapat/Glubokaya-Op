@@ -181,6 +181,9 @@ class Server:
                     tasks=_IDS,
                     engine=_prop("string", "engine name from swarm.toml (default: the default)"),
                     max_iterations=_prop("integer", "attempts per task (default from swarm.toml)"),
+                    no_budget_check=_prop(
+                        "boolean", "send a prompt even when it cannot fit the context window"
+                    ),
                 ),
                 self.run,
             ),
@@ -357,6 +360,8 @@ class Server:
         extra: dict[str, Any] = {}
         if params.get("max_iterations") is not None:
             extra["max_iterations"] = int(params["max_iterations"])
+        if params.get("no_budget_check"):
+            extra["budget_check"] = False
 
         def work(job: Job) -> Any:
             job.say(f"target {target.name} | engine {spec.label} | {len(tasks)} task(s)")

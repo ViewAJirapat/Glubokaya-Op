@@ -151,6 +151,24 @@ Aider-specific hardening, each learned from a real failure on this machine:
 (a looping 7B otherwise generates until timeout), and a per-run `--aiderignore` so files named
 in the prompt (like `pyproject.toml`) aren't auto-added to the chat.
 
+### Context budget and token counts
+
+An 8k-context model overflows silently: the server shifts the context in the middle of the
+reply and the run fails for no visible reason. So every local engine in `swarm.toml` names
+its `context_window` (the `num_ctx` of `config/aider.model.settings.yml`) and a
+`reply_reserve` (default 2048). Before each agent call the runner counts the prompt, the
+rules file and the files the task and the target name, with the model's own tokenizer
+(Ollama `/api/tokenize`) or, when no server answers, `len / 3.3`; `iter-N/budget.txt` has
+the numbers, and a call that cannot fit ends the run with `prompt too large` instead of
+starting it (`--no-budget-check` sends it anyway). The engine's own system prompt is not
+counted; the estimate runs conservative (ChatBook cb-38: 5,635 counted, 5.3k-5.8k sent).
+
+After the call, aider's `Tokens: X sent, Y received` lines go into the iteration record and
+`summary.json` (`max_sent`), and the run table gets a TOKENS column with the largest call.
+With `ollama_log` set under `[defaults]` (Ollama's server log, when you capture one), the
+lines it appended during the call are searched for an overflow (`truncated = 1`, `context
+shift`); a hit is `iter-N/overflow.txt`, `overflows` in the summary and a `!` in the table.
+
 ## Docker sandbox (opt-in)
 
 Set `sandbox = "docker"` on a target in `swarm.toml`, or pass `--sandbox docker` for one
@@ -238,6 +256,7 @@ tasks, so a local-model failure can be read as the model's limit rather than a h
 | `swarm validate` | oracle run: proves every task is solvable and meaningful |
 | `swarm integrate [BRANCH...]` | merge passing branches (default: newest per task), re-verify |
 | `swarm tasks` / `swarm runs` | list tasks / recent runs |
+| `--no-budget-check` (run, bench, validate) | send the prompt even when it cannot fit the engine's `context_window` |
 | `swarm clean [--branches]` | remove worktrees (and `agent/*`, `integration/*` branches, leftover sandbox containers) |
 | `swarm archlint [PATH] [--json]` | check a checkout (default: the target repo) against the target's architecture rules |
 | `swarm docker-build` | build the sandbox image from `docker/Dockerfile` |

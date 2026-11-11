@@ -1,6 +1,6 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-11-11 on `main` (PLAN.md phases S, C and A: Studio merged, optional Claude/Antigravity chief, protected CONTRACT blocks) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
+**Updated:** 2026-11-11 on `main` (PLAN.md phases S, C, A and B: Studio merged, optional Claude/Antigravity chief, protected CONTRACT blocks, context budget and token counts) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
@@ -59,7 +59,23 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
     `--restore-contracts` autofix line and set `protected_blocks` instead (the owner's
     call; the ChatBook repos are not touched by this harness work).
   - The studio frame dropped `tools/restore_contracts.py` and uses `protected_blocks`.
-- Health check now: 193 passed, 3 skipped (`pytest -q`), `ruff check .` and
+- **Phase B (2026-11-11, branch `feat/b`): context budget and token counts.**
+  `EngineSpec.context_window` / `reply_reserve` (set for every local engine in `swarm.toml`);
+  `engines.count_tokens` (Ollama `/api/tokenize`, else `len / 3.3`); `runner.check_budget`
+  before each agent call (`iter-N/budget.txt`, `RunError("prompt too large")`,
+  `--no-budget-check`); aider's `Tokens:` lines into `IterationRecord.tokens` and
+  `RunSummary.max_sent` (the TOKENS column of the run table); `[defaults] ollama_log` for the
+  overflow grep (`iter-N/overflow.txt`, `RunSummary.overflows`, `!` in the table). The MCP
+  `run` and `validate` tools take `no_budget_check`.
+  - Proof on cb-38 (the P2 call that sat closest to the 8k window), counted the way the
+    runner counts, with the estimate because Ollama was down: 5,635 tokens for the prompt,
+    the rules and the two named files; it fits at both reserves (room 7,168 and 6,144). The
+    plan expected about 7.0k and a failure at 2048: that figure was aider's reported total
+    with its own system prompt, which the budget does not count. The estimate is on the
+    safe side (aider sent 5.3k-5.8k). The tokenizer path is covered by a stub server test;
+    run `swarm -t demo run demo-001 -e local-14b-arch` once Ollama is up to see a real
+    `budget.txt` with the tokenizer count.
+- Health check now: 202 passed, 3 skipped (`pytest -q`), `ruff check .` and
   `mypy --strict` clean.
 
 ### Cost lines (PLAN.md rule 5: the number the plan is judged by)

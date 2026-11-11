@@ -22,6 +22,9 @@ class Settings:
     feedback_chars: int = 6000  # total budget for failure output fed back to the agent
     acceptance_feedback: str = "full"  # how much hidden-test output the agent sees
     baseline_check: bool = True  # base must pass the gates and fail the hidden tests
+    # Ollama's server log, when the owner captures one: after each agent call the lines it
+    # appended are searched for a context overflow (engines.OVERFLOW_PATTERNS).
+    ollama_log: Path | None = None
 
 
 @dataclass
@@ -77,6 +80,11 @@ class EngineSpec:
     model_settings: Path | None = None
     cmd: list[str] = field(default_factory=list)  # kind = "command"
     stdin: str | None = None  # kind = "command": "prompt" pipes the prompt on stdin
+    # The model's context in tokens (num_ctx for Ollama) and the room a reply needs. With a
+    # window set, the runner refuses a prompt that cannot fit (runner.budget) instead of
+    # letting the server shift the context in the middle of the reply.
+    context_window: int | None = None
+    reply_reserve: int = 2048
 
     @property
     def label(self) -> str:
@@ -177,6 +185,8 @@ def _engine(name: str, raw: dict[str, Any], root: Path) -> EngineSpec:
         extra_args=list(map(str, raw.get("extra_args", []))),
         model_settings=_path(root, settings) if settings else None,
         cmd=list(map(str, raw.get("cmd", []))),
+        context_window=int(raw["context_window"]) if raw.get("context_window") else None,
+        reply_reserve=int(raw.get("reply_reserve", 2048)),
         stdin=raw.get("stdin"),
     )
 
@@ -187,10 +197,13 @@ def from_dict(data: dict[str, Any], root: Path) -> Config:
     default_engine = defaults.pop("engine", None)
     worktrees = defaults.pop("worktrees_dir", ".worktrees")
     runs = defaults.pop("runs_dir", "runs")
+    ollama_log = defaults.pop("ollama_log", None)
     try:
         settings = Settings(**defaults)
     except TypeError as exc:
         raise ConfigError(f"[defaults]: {exc}") from None
+    if ollama_log:
+        settings.ollama_log = _path(root, str(ollama_log))
     if settings.acceptance_feedback not in ACCEPTANCE_FEEDBACK_MODES:
         raise ConfigError(f"acceptance_feedback must be one of {ACCEPTANCE_FEEDBACK_MODES}")
     try:

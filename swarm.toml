@@ -10,6 +10,8 @@ verify_timeout = 300         # seconds per verification command
 feedback_chars = 6000        # failure output fed back per attempt; keep small for 16k-context models
 acceptance_feedback = "full" # full | summary | none: how much hidden-test output the agent sees
 baseline_check = true        # base must be green and the hidden tests must fail on it
+# ollama_log = "work/ollama.log"  # Ollama's server log, when captured: each iteration's lines are
+#                              # searched for a context overflow ("truncated = 1", "context shift")
 
 # Swarm Studio (`swarm studio`): the chief plans in Ollama, the worker engine builds through
 # this harness. Projects (app repo, tasks, runs) live in projects_dir. Values shown are the
@@ -175,6 +177,7 @@ readonly_checks = true       # gates see the worktree read-only: what passed is 
 [engines.local-7b]
 kind = "aider"
 model = "ollama_chat/qwen2.5-coder:7b"
+context_window = 16384         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024"]
@@ -183,6 +186,7 @@ extra_args = ["--map-tokens", "1024"]
 [engines.local-14b]
 kind = "aider"
 model = "ollama_chat/qwen2.5-coder:14b"
+context_window = 8192         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024"]
@@ -192,6 +196,7 @@ extra_args = ["--map-tokens", "1024"]
 [engines.local-16b]
 kind = "aider"
 model = "ollama_chat/deepseek-coder-v2:16b"
+context_window = 8192         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024"]
@@ -201,6 +206,7 @@ extra_args = ["--map-tokens", "1024"]
 [engines.local-7b-arch]
 kind = "aider"
 model = "ollama_chat/qwen2.5-coder:7b"
+context_window = 16384         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024", "--architect"]
@@ -208,6 +214,7 @@ extra_args = ["--map-tokens", "1024", "--architect"]
 [engines.local-14b-arch]
 kind = "aider"
 model = "ollama_chat/qwen2.5-coder:14b"
+context_window = 8192         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024", "--architect"]
@@ -218,6 +225,7 @@ extra_args = ["--map-tokens", "1024", "--architect"]
 [engines.studio-14b]
 kind = "aider"
 model = "ollama_chat/qwen2.5-coder:14b"
+context_window = 8192         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "0", "--architect"]
@@ -225,6 +233,7 @@ extra_args = ["--map-tokens", "0", "--architect"]
 [engines.local-16b-arch]
 kind = "aider"
 model = "ollama_chat/deepseek-coder-v2:16b"
+context_window = 8192         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024", "--architect"]
@@ -234,6 +243,7 @@ extra_args = ["--map-tokens", "1024", "--architect"]
 [engines.local-30b]
 kind = "aider"
 model = "ollama_chat/qwen3-coder:30b"
+context_window = 16384         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024"]
@@ -241,6 +251,7 @@ extra_args = ["--map-tokens", "1024"]
 [engines.local-30b-arch]
 kind = "aider"
 model = "ollama_chat/qwen3-coder:30b"
+context_window = 16384         # num_ctx in config/aider.model.settings.yml; the runner refuses a prompt that cannot fit
 env = { OLLAMA_API_BASE = "http://127.0.0.1:11434" }
 model_settings = "config/aider.model.settings.yml"
 extra_args = ["--map-tokens", "1024", "--architect"]
