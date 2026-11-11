@@ -12,6 +12,45 @@ Rules for all phases:
 - Prove each phase on a real target before merging: ChatBook's `chatbook-oracle` target
   (read-only use of that repo) for items 1-4, the `demo` target for 5.
 
+## Who writes the code: the harness upgrades itself
+
+The plan is run the ChatBook way. Claude writes the specs, the hidden tests and the
+`solution.patch`; the local 14B writes the code; the harness judges. The harness cannot be
+its own target, because the code in `swarm/` of this checkout is what runs the job, so:
+
+1. Clone this repo once to `E:\Playground_Projects\04_AgentSwarm-target` (about 5 MB:
+   `models/`, `.venv/` and `runs/` are ignored). Give it its own `.venv` with `uv sync`
+   so the gates run there.
+2. A scratch config `config/self.toml` with `[targets.self]` pointing `repo` at the clone,
+   the gates `ruff check`, `ruff format --check`, `mypy --strict swarm`, `pytest -q tests`,
+   and `protected = ["tests/**", "swarm/runner.py", "swarm/verify.py", "swarm/guard.py",
+   "config/**"]`: the model must never edit the code that judges it, nor the tests.
+3. Tasks under `tasks/self/<id>/` (`hs-01-blocks-find`, `hs-02-blocks-restore`, ...):
+   `task.toml` with `type`, one target file, `scope`, the prompt; `acceptance/` with the
+   hidden tests; `solution.patch` so `swarm -c config/self.toml -t self validate` proves
+   the spec before the model sees it. A CONTRACT docstring at the top of each new module
+   holds the spec (phase A's own feature then protects it).
+4. `swarm -c config/self.toml -t self run <id>`; review the diff; `integrate`; then
+   `git fetch <clone> agent/<branch>` into this checkout, merge into `main`, push.
+5. Delete the clone after a phase if wanted; it is remade from `main` in a minute.
+
+What the model gets and what staff keep, by the ChatBook numbers (one new file, under
+about 120 lines, a tight spec: 8/10 first-try in P2):
+
+| Model writes | Staff write |
+|---|---|
+| A: `blocks.py` (`find`, `restore`) | A: the call in `runner.py`, the config field |
+| B: `count_tokens`, the `Tokens:` parser | B: the budget check in `runner.py`, `EngineSpec` |
+| C: each lint check in `tasklint.py` | C: the `cli.py` command and the `[lint]` table |
+| D: `_dedupe_pytest` | D: the stuck counter in `runner.py` |
+| E: the grouped table, `compare` | E: `write_bench` changes, `cli.py` |
+| - | F: all of it (a merge, not a coding task) |
+
+Edits to existing files go to the model only when the prompt quotes the exact old and new
+lines, as ChatBook's `fix` prompts do. `mypy --strict` is stricter than anything the 14B
+met in ChatBook, so expect more iterations on typed code; a task that fails twice goes to
+staff rather than a third re-spec.
+
 | Phase | Item in suggest.md | Size | Depends on |
 |---|---|---|---|
 | A | 1 Protected blocks | 1 day | - |
