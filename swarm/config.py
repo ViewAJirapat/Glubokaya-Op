@@ -38,6 +38,10 @@ class Target:
     import_check: str | None = None
     template: Path | None = None  # source tree for `swarm demo-init`
     autofix: list[list[str]] = field(default_factory=list)  # run after each agent edit
+    # Markers of blocks the harness keeps at the top of a file (swarm/blocks.py): a file whose
+    # base version begins with a docstring or comment block holding one of these gets it
+    # back, verbatim, after each edit. Example: ["CONTRACT"].
+    protected_blocks: list[str] = field(default_factory=list)
     sandbox: str = "none"  # "docker": agent and gates run in a container (swarm/sandbox.py)
     architecture: Rules | None = None  # import rules checked as a gate (swarm/archlint.py)
     # Files every agent call gets as read-only context (Aider --read). Useful when protected
@@ -149,6 +153,7 @@ def _target(name: str, raw: dict[str, Any], root: Path) -> Target:
         import_check=raw.get("import_check"),
         template=_path(root, raw["template"]) if raw.get("template") else None,
         autofix=[list(map(str, cmd)) for cmd in raw.get("autofix", [])],
+        protected_blocks=[str(m) for m in raw.get("protected_blocks", [])],
         sandbox=sandbox,
         architecture=architecture,
         context_files=[str(f) for f in raw.get("context_files", [])],
