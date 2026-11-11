@@ -44,9 +44,7 @@ class FakeLLM(Ollama):
         self.answers = list(answers)
         self.calls: list[tuple[str, str]] = []
 
-    def chat_json(
-        self, system: str, user: str, schema: dict[str, Any], progress: Any = None
-    ) -> Any:
+    def complete(self, system: str, user: str, schema: dict[str, Any], progress: Any = None) -> Any:
         kind = "outline" if schema is OUTLINE_SCHEMA else "scenarios"
         assert schema in (OUTLINE_SCHEMA, SCENARIO_SCHEMA)
         self.calls.append((kind, user))
@@ -132,3 +130,28 @@ def test_unreachable_ollama_is_a_clear_error() -> None:
 def test_file_planner_reads_a_plan() -> None:
     plan = FilePlanner(HERE / "todo_plan.json").draft("ignored", None, None, [], _quiet)
     assert plan.title == "Todo" and planmod.problems(plan) == []
+
+
+class DictBackend:
+    """A backend that is not an Ollama: just the protocol (label + complete)."""
+
+    label = "dict backend"
+
+    def __init__(self, answers: list[Any]) -> None:
+        self.answers = list(answers)
+        self.schemas: list[str] = []
+
+    def complete(self, system: str, user: str, schema: dict[str, Any], progress: Any = None) -> Any:
+        self.schemas.append(schema["title"] if "title" in schema else str(schema)[:20])
+        return self.answers.pop(0)
+
+
+def test_chief_takes_any_backend_with_the_protocol() -> None:
+    backend = DictBackend(
+        [_outline(), _scenarios("todos"), _scenarios("todo_edit"), _scenarios("todo_stats")]
+    )
+    chief = Chief(backend)
+    assert chief.label == "dict backend"
+    plan = chief.draft("a todo app", None, None, [], _quiet)
+    assert planmod.problems(plan) == []
+    assert len(backend.schemas) == 4

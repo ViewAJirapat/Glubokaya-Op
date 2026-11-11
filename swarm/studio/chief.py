@@ -15,7 +15,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from swarm.studio import plan as planmod
 from swarm.studio.plan import Feature, Plan
@@ -341,14 +341,40 @@ class ChiefError(Exception):
     pass
 
 
+class ChiefBackend(Protocol):
+    """What the chief needs from a planner model: one structured completion at a time.
+
+    The chief's own logic (outline, scenarios per feature, retries with the problems found)
+    is the same for every backend; only this call differs. `Ollama` below is the local one.
+    A backend raises `ChiefError` with a message the owner can act on."""
+
+    @property
+    def label(self) -> str:
+        """Shown in the studio: which model plans."""
+        ...
+
+    def complete(
+        self, system: str, user: str, schema: dict[str, Any], progress: Say | None = None
+    ) -> Any:
+        """Return the model's reply as parsed JSON matching `schema` (a JSON schema).
+        `progress` may be called with short status lines while the reply streams."""
+        ...
+
+
 class Ollama:
+    """The local backend: Ollama's structured output (`format = schema`)."""
+
     def __init__(self, base: str, model: str, num_ctx: int, num_predict: int) -> None:
         self.base = base.rstrip("/")
         self.model = model
         self.num_ctx = num_ctx
         self.num_predict = num_predict
 
-    def chat_json(
+    @property
+    def label(self) -> str:
+        return f"{self.model} (Ollama)"
+
+    def complete(
         self, system: str, user: str, schema: dict[str, Any], progress: Say | None = None
     ) -> Any:
         """One structured-output chat call, streamed so the UI can show progress."""
@@ -423,9 +449,12 @@ def _outline_dict(plan: Plan) -> dict[str, Any]:
 
 
 class Chief:
-    def __init__(self, llm: Ollama) -> None:
-        self.llm = llm
-        self.label = f"{llm.model} (Ollama)"
+    """Plans with any `ChiefBackend`: outline first, then the scenarios of each new feature,
+    each checked and retried once with the problems found."""
+
+    def __init__(self, backend: ChiefBackend) -> None:
+        self.backend = backend
+        self.label = backend.label
 
     def draft(
         self,
@@ -473,7 +502,7 @@ class Chief:
                 + f"\n\nThe owner asks for these changes:\n{comment.strip()}\n"
                 "Reply with the whole revised plan."
             )
-        raw = self.llm.chat_json(
+        raw = self.backend.complete(
             OUTLINE_SYSTEM, "\n\n".join(user), OUTLINE_SCHEMA, lambda m: progress(f"outline: {m}")
         )
         plan = self._with_built(planmod.plan_from_dict(raw), built)
@@ -485,7 +514,7 @@ class Chief:
                 + "\n\nIt has these problems. Reply with the whole plan, fixed:\n"
                 + "\n".join(f"- {p}" for p in found)
             )
-            raw = self.llm.chat_json(
+            raw = self.backend.complete(
                 OUTLINE_SYSTEM,
                 "\n\n".join(user),
                 OUTLINE_SCHEMA,
@@ -523,7 +552,7 @@ class Chief:
                 + "\nThey have these problems; reply with all scenarios, fixed:\n"
                 + "\n".join(f"- {p}" for p in problems)
             )
-        raw = self.llm.chat_json(SCENARIO_SYSTEM, "\n".join(user), SCENARIO_SCHEMA, progress)
+        raw = self.backend.complete(SCENARIO_SYSTEM, "\n".join(user), SCENARIO_SCHEMA, progress)
         return planmod.scenarios_from_list(raw.get("scenarios") if isinstance(raw, dict) else [])
 
 

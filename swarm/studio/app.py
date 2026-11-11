@@ -92,8 +92,10 @@ def run(
     if plan_file:
         planner = FilePlanner(plan_file.resolve())
     else:
-        llm = Ollama(settings.ollama, settings.chief_model, settings.num_ctx, settings.num_predict)
-        planner = Chief(llm)
+        backend = Ollama(
+            settings.ollama, settings.chief_model, settings.num_ctx, settings.num_predict
+        )
+        planner = Chief(backend)
     project: Project = open_project(
         project_name, planner, harness_config=config_path, engine=engine, sandbox=sandbox
     )
