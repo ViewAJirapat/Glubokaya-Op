@@ -1,6 +1,6 @@
 # Developer Handover: Glubokaya-Op (agent swarm harness + local-AI fallback)
 
-**Updated:** 2026-11-11 on `main` (PLAN.md phases S and C: Studio merged, Claude or Antigravity as an optional chief) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
+**Updated:** 2026-11-11 on `main` (PLAN.md phases S, C and A: Studio merged, optional Claude/Antigravity chief, protected CONTRACT blocks) · **Repo:** private GitHub `ViewAJirapat/Glubokaya-Op` · **Built on:** Windows 11, GTX 1080 Ti (11 GB); now also set up on an RTX 4080 Laptop (12 GB)
 
 This is for whoever continues development **on another PC**, human or AI, with no prior context.
 - **Set up first:** section 6, step 1.
@@ -48,7 +48,18 @@ You watch the plan, the tasks, live logs, diffs and a live preview. Design and d
   - **Not run yet:** the comparison in PLAN.md (one wave with the Claude chief against the
     local chief, tokens and pass rate side by side). It costs Claude tokens and the GPU;
     ask the owner, then add the row to the cost table below.
-- Health check now: 176 passed, 3 skipped (`pytest -q`), `ruff check .` and
+- **Phase A (2026-11-11, branch `feat/a`): protected blocks in the harness.**
+  `protected_blocks = ["CONTRACT"]` on a target makes `swarm/blocks.py` put the docstring or
+  comment block a file begins with back on top after every edit, before the guard: deleted,
+  moved or edited, the base version wins; the record, `iter-N/restored.txt`, the progress
+  line and the feedback say so, and the prompt tells the model to leave it alone.
+  - Proof on ChatBook (2026-11-11, scratch worktree of `chatbook` at `c6d064f`): a moved
+    Python docstring and an edited `//` line made `tools/check_extra.py` fail; after
+    `blocks.restore` it passed with the two files restored. ChatBook can now drop its own
+    `--restore-contracts` autofix line and set `protected_blocks` instead (the owner's
+    call; the ChatBook repos are not touched by this harness work).
+  - The studio frame dropped `tools/restore_contracts.py` and uses `protected_blocks`.
+- Health check now: 193 passed, 3 skipped (`pytest -q`), `ruff check .` and
   `mypy --strict` clean.
 
 ### Cost lines (PLAN.md rule 5: the number the plan is judged by)
@@ -116,9 +127,11 @@ After the restart, in `E:\Playground_Projects\04_AgentSwarm-studio` (this worktr
   - the project and the build loop with review (`project.py`);
   - the server, the UI, the preview and `swarm studio`;
   - the worker engine `studio-14b`: `local-14b-arch` without the repo map;
-  - `tools/restore_contracts.py` in the frame: an autofix that puts a deleted or misplaced
-    CONTRACT back on top. `Project.update_frame()` brings existing projects' frame files up to
-    date on start; it never touches features, `ui.json` or the CONTRACT snapshots;
+  - the CONTRACT docstring is put back on top by the harness after every edit
+    (`protected_blocks = ["CONTRACT"]` in `frames/webapp.toml`; phase A replaced the frame's
+    own `tools/restore_contracts.py` on 2026-11-11). `Project.update_frame()` brings existing
+    projects' frame files up to date on start; it never touches features, `ui.json` or the
+    CONTRACT snapshots;
   - 51 tests: `tests/test_studio.py` (scripted planner and worker),
     `tests/test_studio_chief.py` (scripted model) and `tests/test_studio_review.py` (the
     review's regressions). The frame has its own 21.
